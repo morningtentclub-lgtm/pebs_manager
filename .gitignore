@@ -35,6 +35,7 @@ yarn-error.log*
 
 # Google Cloud credentials
 google-cloud-key.json
+.private/
 
 # vercel
 .vercel

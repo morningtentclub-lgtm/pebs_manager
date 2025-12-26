@@ -48,9 +48,26 @@ export default function PaymentListPage() {
         status: project.status === 'pending' ? 'ongoing' : project.status,
       }));
 
-      const normalizedPayments = (paymentData || []).map((payment) => ({
-        ...payment,
+      const normalizedPayments: Payment[] = (paymentData || []).map((payment) => ({
+        id: payment.id,
+        project_id: payment.project_id,
+        item: payment.item ?? null,
+        recipient: payment.recipient ?? null,
+        amount: payment.amount ?? 0,
+        payment_method_id: payment.payment_method_id ?? null,
+        staff_type_id: payment.staff_type_id ?? null,
+        bank_name: payment.bank_name ?? null,
+        account_number: payment.account_number ?? null,
+        resident_number: payment.resident_number ?? null,
+        business_registration_number: payment.business_registration_number ?? null,
+        id_card_url: payment.id_card_url ?? null,
+        bankbook_url: payment.bankbook_url ?? null,
         payment_status: payment.payment_status || 'pending',
+        invoice_date: payment.invoice_date ?? null,
+        payment_date: payment.payment_date ?? null,
+        memo: payment.memo ?? null,
+        created_at: payment.created_at,
+        updated_at: payment.updated_at ?? null,
       }));
 
       setPayments(normalizedPayments);
