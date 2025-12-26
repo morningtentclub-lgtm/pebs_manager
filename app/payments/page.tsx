@@ -32,7 +32,7 @@ export default function PaymentListPage() {
           supabase
             .from('payments')
             .select(
-              'id, project_id, recipient, amount, payment_method_id, staff_type_id, bank_name, account_number, resident_number, business_registration_number, payment_status, created_at, updated_at'
+              'id, project_id, item, recipient, amount, payment_method_id, staff_type_id, bank_name, account_number, resident_number, business_registration_number, id_card_url, bankbook_url, payment_status, invoice_date, payment_date, memo, created_at, updated_at'
             )
             .order('created_at', { ascending: false }),
           supabase.from('projects').select('id, name, status, created_at, updated_at'),
