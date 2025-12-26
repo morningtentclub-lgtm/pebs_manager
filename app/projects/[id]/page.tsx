@@ -31,7 +31,6 @@ export default function ProjectDetailPage() {
     bank_name: '',
     account_number: '',
     resident_number: '',
-    business_registration_number: '',
     invoice_date: '',
     payment_date: '',
     memo: '',
@@ -86,13 +85,6 @@ export default function ProjectDetailPage() {
     return `${digits.slice(0, 6)}-*******`;
   };
 
-  const formatBusinessPreview = (value: string | null) => {
-    if (!value) return '';
-    const digits = value.replace(/[^0-9]/g, '');
-    if (digits.length < 5) return digits;
-    return `${digits.slice(0, 3)}-**-${digits.slice(-2)}`;
-  };
-
   const paymentMethodById = new Map(paymentMethods.map((pm) => [pm.id, pm.name]));
   const staffTypeById = new Map(staffTypes.map((st) => [st.id, st.name]));
 
@@ -118,7 +110,6 @@ export default function ProjectDetailPage() {
         resident_number: '',
         bank_name: '',
         account_number: '',
-        business_registration_number: '',
         id_card_url: '',
         bankbook_url: ''
       }));
@@ -221,7 +212,7 @@ export default function ProjectDetailPage() {
         const { data, error } = await supabase
           .from('payments')
           .select(
-            'id, recipient, bank_name, account_number, resident_number, payment_method_id, staff_type_id, business_registration_number, created_at'
+            'id, recipient, bank_name, account_number, resident_number, payment_method_id, staff_type_id, created_at'
           )
           .ilike('recipient', `%${query}%`)
           .order('created_at', { ascending: false })
@@ -400,7 +391,6 @@ export default function ProjectDetailPage() {
     residentNumber?: string;
     bankName?: string;
     accountNumber?: string;
-    businessRegistrationNumber?: string;
     imagePath?: string;
   }) => {
     setNewPayment((prev) => {
@@ -414,9 +404,6 @@ export default function ProjectDetailPage() {
       }
       if (data.accountNumber && !prev.account_number) {
         next.account_number = data.accountNumber;
-      }
-      if (data.businessRegistrationNumber && !prev.business_registration_number) {
-        next.business_registration_number = data.businessRegistrationNumber;
       }
       if (data.imagePath) {
         if (data.residentNumber && !prev.id_card_url) {
@@ -438,7 +425,6 @@ export default function ProjectDetailPage() {
       bank_name: payment.bank_name || '',
       account_number: payment.account_number || '',
       resident_number: payment.resident_number || '',
-      business_registration_number: payment.business_registration_number || '',
       payment_method_id: payment.payment_method_id ?? null,
       staff_type_id: payment.staff_type_id ?? null
     }));
@@ -502,7 +488,6 @@ export default function ProjectDetailPage() {
         payment_date: paymentData.payment_date || null,
         id_card_url: paymentData.id_card_url || null,
         bankbook_url: paymentData.bankbook_url || null,
-        business_registration_number: paymentData.business_registration_number || null,
         payment_status: 'pending'
       };
 
@@ -521,7 +506,6 @@ export default function ProjectDetailPage() {
         bank_name: '',
         account_number: '',
         resident_number: '',
-        business_registration_number: '',
         invoice_date: '',
         payment_date: '',
         memo: '',
@@ -936,7 +920,7 @@ export default function ProjectDetailPage() {
                           <div className="text-sm font-medium text-gray-900">{match.recipient}</div>
                           <div className="text-xs text-gray-500">
                             은행 {match.bank_name || '-'} · 계좌 {formatAccountPreview(match.account_number)} ·
-                            주민 {formatResidentPreview(match.resident_number)} · 사업자 {formatBusinessPreview(match.business_registration_number)}
+                            주민 {formatResidentPreview(match.resident_number)}
                           </div>
                           <div className="text-xs text-gray-400">
                             지급방식 {paymentMethodById.get(match.payment_method_id || 0) || '-'} ·
@@ -1019,21 +1003,9 @@ export default function ProjectDetailPage() {
                   placeholder="원천징수용"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  사업자등록번호 <span className="text-xs text-gray-500">(세금계산서 용)</span>
-                </label>
-                <input
-                  type="text"
-                  value={newPayment.business_registration_number}
-                  onChange={(e) => setNewPayment({ ...newPayment, business_registration_number: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2"
-                  placeholder="000-00-00000"
-                />
-              </div>
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  신분증/통장/사업자등록증 업로드 (OCR 자동 인식)
+                  신분증/통장 업로드 (OCR 자동 인식)
                 </label>
                 <div
                   className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-400 transition-colors cursor-default"
@@ -1104,7 +1076,7 @@ export default function ProjectDetailPage() {
                   )}
                 </div>
                 <p className="mt-2 text-xs text-amber-600">
-                  OCR 결과가 정확하지 않을 수 있으니 주민등록번호, 계좌번호, 사업자등록번호는 직접 확인해주세요.
+                  OCR 결과가 정확하지 않을 수 있으니 주민등록번호와 계좌번호는 직접 확인해주세요.
                 </p>
               </div>
               <div className="col-span-2">

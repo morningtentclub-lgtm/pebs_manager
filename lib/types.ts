@@ -28,7 +28,6 @@ export interface Payment {
   bank_name: string | null;
   account_number: string | null;
   resident_number: string | null;
-  business_registration_number: string | null;
   id_card_url: string | null;
   bankbook_url: string | null;
   payment_status: 'pending' | 'completed' | null;

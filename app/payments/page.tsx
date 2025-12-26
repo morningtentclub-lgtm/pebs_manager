@@ -32,7 +32,7 @@ export default function PaymentListPage() {
           supabase
             .from('payments')
             .select(
-              'id, project_id, item, recipient, amount, payment_method_id, staff_type_id, bank_name, account_number, resident_number, business_registration_number, id_card_url, bankbook_url, payment_status, invoice_date, payment_date, memo, created_at, updated_at'
+              'id, project_id, item, recipient, amount, payment_method_id, staff_type_id, bank_name, account_number, resident_number, id_card_url, bankbook_url, payment_status, invoice_date, payment_date, memo, created_at, updated_at'
             )
             .order('created_at', { ascending: false }),
           supabase.from('projects').select('id, name, client, status, created_at, updated_at'),
@@ -63,7 +63,6 @@ export default function PaymentListPage() {
         bank_name: payment.bank_name ?? null,
         account_number: payment.account_number ?? null,
         resident_number: payment.resident_number ?? null,
-        business_registration_number: payment.business_registration_number ?? null,
         id_card_url: payment.id_card_url ?? null,
         bankbook_url: payment.bankbook_url ?? null,
         payment_status: payment.payment_status || 'pending',
@@ -148,12 +147,6 @@ export default function PaymentListPage() {
     return `${digits.slice(0, 6)}-*******`;
   };
 
-  const maskBusiness = (value: string | null) => {
-    if (!value) return '-';
-    const digits = value.replace(/[^0-9]/g, '');
-    if (digits.length < 5) return digits;
-    return `${digits.slice(0, 3)}-**-${digits.slice(-2)}`;
-  };
 
   const buildGroups = (items: Payment[]) => {
     const groups = new Map<string, Payment[]>();
@@ -392,7 +385,7 @@ export default function PaymentListPage() {
                                 <td className="px-3 py-3 text-sm text-gray-700">
                                   {payment.bank_name ? `${payment.bank_name} ${maskAccount(payment.account_number)}` : '-'}
                                   <div className="text-xs text-gray-400">
-                                    주민 {maskResident(payment.resident_number)} · 사업자 {maskBusiness(payment.business_registration_number)}
+                                    주민 {maskResident(payment.resident_number)}
                                   </div>
                                 </td>
                                 <td className="px-3 py-3 text-sm text-gray-900">
