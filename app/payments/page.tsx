@@ -35,7 +35,7 @@ export default function PaymentListPage() {
               'id, project_id, item, recipient, amount, payment_method_id, staff_type_id, bank_name, account_number, resident_number, business_registration_number, id_card_url, bankbook_url, payment_status, invoice_date, payment_date, memo, created_at, updated_at'
             )
             .order('created_at', { ascending: false }),
-          supabase.from('projects').select('id, name, status, created_at, updated_at'),
+          supabase.from('projects').select('id, name, client, status, created_at, updated_at'),
           supabase.from('staff_types').select('*'),
           supabase.from('payment_methods').select('*'),
         ]);
@@ -43,9 +43,13 @@ export default function PaymentListPage() {
       if (paymentError) throw paymentError;
       if (projectError) throw projectError;
 
-      const normalizedProjects = (projectData || []).map((project) => ({
-        ...project,
+      const normalizedProjects: Project[] = (projectData || []).map((project) => ({
+        id: project.id,
+        name: project.name,
+        client: project.client ?? null,
         status: project.status === 'pending' ? 'ongoing' : project.status,
+        created_at: project.created_at,
+        updated_at: project.updated_at,
       }));
 
       const normalizedPayments: Payment[] = (paymentData || []).map((payment) => ({
