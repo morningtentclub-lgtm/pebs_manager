@@ -12,6 +12,21 @@ type PaymentListItem = Payment & {
   expense_id?: string;
   method_label?: string;
 };
+type PersonalExpenseRow = {
+  id: string;
+  project_id: string;
+  amount: number | null;
+  vendor: string | null;
+  description: string | null;
+  note: string | null;
+  payer_name: string | null;
+  payer_bank_name: string | null;
+  payer_account_number: string | null;
+  payment_status: string | null;
+  payment_date: string | null;
+  created_at: string;
+  is_company_expense: boolean | null;
+};
 
 export default function PaymentListPage() {
   const [payments, setPayments] = useState<PaymentListItem[]>([]);
@@ -94,7 +109,7 @@ export default function PaymentListPage() {
         source: 'payment',
       }));
 
-      const personalExpenses: PaymentListItem[] = (expenseData || []).map((expense: Expense) => ({
+      const personalExpenses: PaymentListItem[] = (expenseData || []).map((expense: PersonalExpenseRow) => ({
         id: `expense-${expense.id}`,
         expense_id: expense.id,
         project_id: expense.project_id,
