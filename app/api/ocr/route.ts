@@ -101,12 +101,69 @@ const BANK_NAMES: { [key: string]: string } = {
   '씨티': '씨티은행',
   'KDB': '산업은행',
   '산업': '산업은행',
+  '부산': '부산은행',
+  '광주': '광주은행',
+  '제주': '제주은행',
   '수협': '수협은행',
   '새마을': '새마을금고',
   '우체국': '우체국',
   '신협': '신협',
+  '신용협동조합': '신협',
   '저축은행': '저축은행',
+  '상호저축': '저축은행',
+  '산림': '산림조합',
+  '대구': 'iM뱅크',
+  'IM뱅크': 'iM뱅크',
+  'IM BANK': 'iM뱅크',
 };
+
+const BANK_ACCOUNT_LENGTHS: Record<string, number[]> = {
+  '산업은행': [11, 14],
+  '기업은행': [10, 11, 12, 14],
+  '국민은행': [9, 10, 12, 14],
+  '수협은행': [11, 12, 14],
+  '농협은행': [13, 14],
+  '우리은행': [11, 12, 13, 14],
+  'SC제일은행': [11, 14],
+  '씨티은행': [10, 11, 12, 13],
+  'iM뱅크': [11, 12, 13, 14],
+  '부산은행': [12, 13],
+  '광주은행': [12, 13],
+  '제주은행': [10, 12],
+  '새마을금고': [13, 14],
+  '신협': [12, 13],
+  '저축은행': [11, 14],
+  '산림조합': [11, 12, 13],
+  '우체국': [12, 13, 14],
+  '하나은행': [11, 12, 14],
+  '신한은행': [11, 12, 13, 14],
+  '케이뱅크': [12],
+  '카카오뱅크': [13],
+  '토스뱅크': [12, 14],
+};
+
+const BANK_ACCOUNT_LENGTH_ALIASES: Record<string, string> = {
+  '한국산업은행': '산업은행',
+  'KDB산업은행': '산업은행',
+  'IBK기업은행': '기업은행',
+  'KB국민은행': '국민은행',
+  'Sh수협은행': '수협은행',
+  'NH농협은행': '농협은행',
+  '농업협동조합': '농협은행',
+  '단위농협': '농협은행',
+  '한국씨티은행': '씨티은행',
+  '대구은행': 'iM뱅크',
+  'BNK부산은행': '부산은행',
+  '상호저축은행': '저축은행',
+  '우체국예금': '우체국',
+  '신용협동조합': '신협',
+};
+
+function resolveBankLengthKey(bankName: string) {
+  if (!bankName) return bankName;
+  const compact = bankName.replace(/\s/g, '');
+  return BANK_ACCOUNT_LENGTH_ALIASES[compact] || BANK_ACCOUNT_LENGTH_ALIASES[bankName] || bankName;
+}
 
 // 주민등록번호 패턴 추출 (YYMMDD-NNNNNNN)
 function extractResidentNumber(text: string): string | null {
@@ -331,6 +388,29 @@ export async function POST(request: NextRequest) {
       if (businessRegistrationNumber) {
         extractedData.businessRegistrationNumber = businessRegistrationNumber;
       }
+    }
+
+    const warnings: string[] = [];
+    if (extractedData.residentNumber) {
+      const digits = extractedData.residentNumber.replace(/[^0-9]/g, '');
+      if (digits.length !== 13) {
+        warnings.push(`주민등록번호는 13자리여야 합니다. (현재 ${digits.length}자리)`);
+      }
+    }
+
+    if (extractedData.bankName && extractedData.accountNumber) {
+      const normalizedBank = resolveBankLengthKey(extractedData.bankName);
+      const allowedLengths = BANK_ACCOUNT_LENGTHS[normalizedBank];
+      const accountDigits = extractedData.accountNumber.replace(/[^0-9]/g, '');
+      if (allowedLengths && !allowedLengths.includes(accountDigits.length)) {
+        warnings.push(
+          `${extractedData.bankName} 계좌번호 자리수는 ${allowedLengths.join('/')}자리입니다. (현재 ${accountDigits.length}자리)`
+        );
+      }
+    }
+
+    if (warnings.length > 0) {
+      extractedData.warnings = warnings;
     }
 
     return NextResponse.json(extractedData);

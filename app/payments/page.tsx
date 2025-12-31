@@ -3,13 +3,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Payment, PaymentMethod, Project, StaffType } from '@/lib/types';
+import { Expense, Payment, PaymentMethod, Project, StaffType } from '@/lib/types';
 
 type SortMode = 'project' | 'recipient' | 'updated' | 'staff' | 'method';
 type ViewStatus = 'pending' | 'completed';
+type PaymentListItem = Payment & {
+  source: 'payment' | 'expense';
+  expense_id?: string;
+  method_label?: string;
+};
 
 export default function PaymentListPage() {
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [payments, setPayments] = useState<PaymentListItem[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [staffTypes, setStaffTypes] = useState<StaffType[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
@@ -27,21 +32,35 @@ export default function PaymentListPage() {
     }
     setErrorMessage('');
     try {
-      const [{ data: paymentData, error: paymentError }, { data: projectData, error: projectError }, { data: staffData }, { data: methodData }] =
+      const [
+        { data: paymentData, error: paymentError },
+        { data: projectData, error: projectError },
+        { data: staffData },
+        { data: methodData },
+        { data: expenseData, error: expenseError },
+      ] =
         await Promise.all([
           supabase
             .from('payments')
             .select(
-              'id, project_id, item, recipient, amount, payment_method_id, staff_type_id, bank_name, account_number, resident_number, id_card_url, bankbook_url, payment_status, invoice_date, payment_date, memo, created_at, updated_at'
+              'id, project_id, item, recipient, company_name, amount, payment_method_id, staff_type_id, bank_name, account_number, resident_number, id_card_url, bankbook_url, payment_status, invoice_date, payment_date, memo, created_at, updated_at'
             )
             .order('created_at', { ascending: false }),
           supabase.from('projects').select('id, name, client, status, created_at, updated_at'),
           supabase.from('staff_types').select('*'),
           supabase.from('payment_methods').select('*'),
+          supabase
+            .from('expenses')
+            .select(
+              'id, project_id, amount, vendor, description, note, payer_name, payer_bank_name, payer_account_number, payment_status, payment_date, created_at, is_company_expense'
+            )
+            .eq('is_company_expense', false)
+            .order('created_at', { ascending: false }),
         ]);
 
       if (paymentError) throw paymentError;
       if (projectError) throw projectError;
+      if (expenseError) throw expenseError;
 
       const normalizedProjects: Project[] = (projectData || []).map((project) => ({
         id: project.id,
@@ -52,11 +71,12 @@ export default function PaymentListPage() {
         updated_at: project.updated_at,
       }));
 
-      const normalizedPayments: Payment[] = (paymentData || []).map((payment) => ({
+      const normalizedPayments: PaymentListItem[] = (paymentData || []).map((payment) => ({
         id: payment.id,
         project_id: payment.project_id,
         item: payment.item ?? null,
         recipient: payment.recipient ?? null,
+        company_name: payment.company_name ?? null,
         amount: payment.amount ?? 0,
         payment_method_id: payment.payment_method_id ?? null,
         staff_type_id: payment.staff_type_id ?? null,
@@ -71,9 +91,35 @@ export default function PaymentListPage() {
         memo: payment.memo ?? null,
         created_at: payment.created_at,
         updated_at: payment.updated_at ?? null,
+        source: 'payment',
       }));
 
-      setPayments(normalizedPayments);
+      const personalExpenses: PaymentListItem[] = (expenseData || []).map((expense: Expense) => ({
+        id: `expense-${expense.id}`,
+        expense_id: expense.id,
+        project_id: expense.project_id,
+        item: '개인지출',
+        recipient: expense.payer_name || '개인지출',
+        company_name: expense.vendor ?? null,
+        amount: expense.amount ?? 0,
+        payment_method_id: null,
+        staff_type_id: null,
+        bank_name: expense.payer_bank_name ?? null,
+        account_number: expense.payer_account_number ?? null,
+        resident_number: null,
+        id_card_url: null,
+        bankbook_url: null,
+        payment_status: expense.payment_status || 'pending',
+        invoice_date: null,
+        payment_date: expense.payment_date ?? null,
+        memo: expense.description || expense.note || null,
+        created_at: expense.created_at,
+        updated_at: null,
+        source: 'expense',
+        method_label: '개인지출',
+      }));
+
+      setPayments([...normalizedPayments, ...personalExpenses]);
       setProjects(normalizedProjects);
       setStaffTypes(staffData || []);
       setPaymentMethods(methodData || []);
@@ -133,13 +179,6 @@ export default function PaymentListPage() {
   const staffMap = useMemo(() => new Map(staffTypes.map((st) => [st.id, st.name])), [staffTypes]);
   const methodMap = useMemo(() => new Map(paymentMethods.map((pm) => [pm.id, pm.name])), [paymentMethods]);
 
-  const maskAccount = (value: string | null) => {
-    if (!value) return '-';
-    const digits = value.replace(/[^0-9]/g, '');
-    if (digits.length <= 4) return digits;
-    return `****${digits.slice(-4)}`;
-  };
-
   const maskResident = (value: string | null) => {
     if (!value) return '-';
     const digits = value.replace(/[^0-9]/g, '');
@@ -148,16 +187,16 @@ export default function PaymentListPage() {
   };
 
 
-  const buildGroups = (items: Payment[]) => {
-    const groups = new Map<string, Payment[]>();
-    const getKey = (payment: Payment) => {
+  const buildGroups = (items: PaymentListItem[]) => {
+    const groups = new Map<string, PaymentListItem[]>();
+    const getKey = (payment: PaymentListItem) => {
       switch (sortMode) {
         case 'recipient':
           return payment.recipient || '미지정';
         case 'staff':
           return staffMap.get(payment.staff_type_id || 0) || '미지정';
         case 'method':
-          return methodMap.get(payment.payment_method_id || 0) || '미지정';
+          return payment.method_label || methodMap.get(payment.payment_method_id || 0) || '미지정';
         case 'updated':
           return '전체';
         case 'project':
@@ -175,8 +214,14 @@ export default function PaymentListPage() {
 
     const sortedGroups = Array.from(groups.entries()).map(([key, list]) => {
       const sorted = [...list].sort((a, b) => {
-        const aTime = new Date(a.updated_at || a.created_at).getTime();
-        const bTime = new Date(b.updated_at || b.created_at).getTime();
+        const aTime =
+          sortMode === 'updated'
+            ? new Date(a.updated_at || a.created_at).getTime()
+            : new Date(a.created_at).getTime();
+        const bTime =
+          sortMode === 'updated'
+            ? new Date(b.updated_at || b.created_at).getTime()
+            : new Date(b.created_at).getTime();
         return bTime - aTime;
       });
       return { key, items: sorted };
@@ -203,19 +248,90 @@ export default function PaymentListPage() {
     [activePayments, sortMode, staffMap, methodMap, projectMap, projectOrderMap]
   );
 
-  const togglePaymentStatus = async (payment: Payment, nextStatus: 'pending' | 'completed') => {
-    try {
-      const { error } = await supabase
-        .from('payments')
-        .update({ payment_status: nextStatus })
-        .eq('id', payment.id);
+  const normalizeDateValue = (value: string | null | undefined) => {
+    if (!value) return '';
+    return value.includes('T') ? value.slice(0, 10) : value;
+  };
 
-      if (error) throw error;
+  const resolveMethodName = (payment: PaymentListItem) =>
+    payment.method_label || methodMap.get(payment.payment_method_id || 0) || '';
+
+  const updatePaymentDates = async (
+    payment: PaymentListItem,
+    updates: { invoice_date?: string | null; payment_date?: string | null }
+  ) => {
+    try {
+      if (payment.source === 'expense') {
+        if (!Object.prototype.hasOwnProperty.call(updates, 'payment_date')) return;
+        const { error } = await supabase
+          .from('expenses')
+          .update({
+            payment_date: updates.payment_date ?? null,
+          })
+          .eq('id', payment.expense_id);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('payments')
+          .update({
+            ...updates,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', payment.id);
+
+        if (error) throw error;
+      }
 
       setPayments((prev) =>
         prev.map((item) =>
           item.id === payment.id
-            ? { ...item, payment_status: nextStatus, updated_at: new Date().toISOString() }
+            ? { ...item, ...updates, updated_at: new Date().toISOString() }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error('지급 내역 날짜 업데이트 실패:', error);
+      alert('지급 내역 날짜 업데이트에 실패했습니다.');
+    }
+  };
+
+  const togglePaymentStatus = async (payment: PaymentListItem, nextStatus: 'pending' | 'completed') => {
+    try {
+      if (payment.source === 'expense') {
+        const { error } = await supabase
+          .from('expenses')
+          .update({ payment_status: nextStatus })
+          .eq('id', payment.expense_id);
+
+        if (error) throw error;
+      } else {
+        const updates: { payment_status: 'pending' | 'completed'; payment_date?: string } = {
+          payment_status: nextStatus,
+        };
+        if (nextStatus === 'completed' && !payment.payment_date) {
+          updates.payment_date = new Date().toISOString().slice(0, 10);
+        }
+        const { error } = await supabase
+          .from('payments')
+          .update(updates)
+          .eq('id', payment.id);
+
+        if (error) throw error;
+      }
+
+      setPayments((prev) =>
+        prev.map((item) =>
+          item.id === payment.id
+            ? {
+                ...item,
+                payment_status: nextStatus,
+                payment_date:
+                  payment.source === 'payment' && nextStatus === 'completed' && !item.payment_date
+                    ? new Date().toISOString().slice(0, 10)
+                    : item.payment_date,
+                updated_at: new Date().toISOString(),
+              }
             : item
         )
       );
@@ -225,10 +341,32 @@ export default function PaymentListPage() {
     }
   };
 
+  const getActualAmount = (payment: PaymentListItem) => {
+    const methodName = payment.method_label || methodMap.get(payment.payment_method_id || 0) || '';
+    if (methodName === '세금계산서') {
+      return Math.round((payment.amount || 0) * 1.1);
+    }
+    if (methodName === '원천징수') {
+      return Math.round((payment.amount || 0) * 0.967);
+    }
+    return payment.amount || 0;
+  };
+
+  const resolveStaffLabel = (payment: PaymentListItem) => {
+    const staffName = staffMap.get(payment.staff_type_id || 0);
+    if (!staffName) {
+      return payment.item || '-';
+    }
+    if (staffName === '기타' && payment.item) {
+      return `기타(${payment.item})`;
+    }
+    return staffName;
+  };
+
   return (
-    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #fafbfc 0%, #f0f2ff 50%, #fafbfc 100%)' }}>
+    <div className="min-h-screen page-shell">
       <div className="bg-white/80 backdrop-blur-xl border-b border-gray-100 shadow-sm sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <Link href="/" className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-[#1D32FB] font-medium transition-colors">
@@ -237,7 +375,7 @@ export default function PaymentListPage() {
                 </svg>
                 프로젝트 목록으로
               </Link>
-              <h1 className="mt-2 text-3xl font-bold" style={{ background: 'linear-gradient(135deg, #1D32FB 0%, #4A5BFF 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+              <h1 className="mt-2 text-3xl font-bold" style={{ background: 'var(--gradient-primary)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
                 지급 내역 리스트
               </h1>
               <p className="mt-1 text-sm text-gray-600 font-medium">전체 프로젝트의 지급 내역을 한눈에 확인합니다</p>
@@ -280,7 +418,7 @@ export default function PaymentListPage() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {loading ? (
           <div className="text-center py-12">
             <div className="inline-flex items-center justify-center">
@@ -315,24 +453,22 @@ export default function PaymentListPage() {
                   <button
                     type="button"
                     onClick={() => setViewStatus('pending')}
-                    className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                    className={`px-4 py-2.5 rounded-lg text-[14px] font-semibold transition-all ${
                       viewStatus === 'pending'
-                        ? 'text-white shadow-lg'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'text-white bg-black border border-black'
+                        : 'bg-white text-gray-700 border border-gray-200 hover:border-black'
                     }`}
-                    style={viewStatus === 'pending' ? { background: 'linear-gradient(135deg, #1D32FB 0%, #4A5BFF 100%)' } : {}}
                   >
                     대기 내역 ({pendingPayments.length})
                   </button>
                   <button
                     type="button"
                     onClick={() => setViewStatus('completed')}
-                    className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                    className={`px-4 py-2.5 rounded-lg text-[14px] font-semibold transition-all ${
                       viewStatus === 'completed'
-                        ? 'text-white shadow-lg'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'text-white bg-black border border-black'
+                        : 'bg-white text-gray-700 border border-gray-200 hover:border-black'
                     }`}
-                    style={viewStatus === 'completed' ? { background: 'linear-gradient(135deg, #1D32FB 0%, #4A5BFF 100%)' } : {}}
                   >
                     완료 내역 ({completedPayments.length})
                   </button>
@@ -354,49 +490,172 @@ export default function PaymentListPage() {
                         <span className="text-xs text-gray-400">{group.items.length}건</span>
                       </div>
                       <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                        <table className="min-w-full divide-y divide-gray-200">
+                        <table className="w-full table-fixed divide-y divide-gray-200">
+                          <colgroup>
+                            <col className="w-[12%]" />
+                            <col className="w-[12%]" />
+                            <col className="w-[9%]" />
+                            <col className="w-[9%]" />
+                            <col className="w-[9%]" />
+                            <col className="w-[9%]" />
+                            <col className="w-[14%]" />
+                            <col className="w-[9%]" />
+                            <col className="w-[9%]" />
+                            <col className="w-[8%]" />
+                          </colgroup>
                           <thead className="bg-gray-50">
                             <tr>
                               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">프로젝트</th>
                               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">수령인</th>
                               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">항목</th>
                               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">지급방식</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">금액</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">공급가액</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">실입금액</th>
                               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">계좌정보</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">완료</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">세금계산서 발행일</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">지급일</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap text-center">완료</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
-                            {group.items.map((payment) => (
-                              <tr key={payment.id}>
-                                <td className="px-3 py-3 text-sm text-gray-900">
-                                  {projectMap.get(payment.project_id) || '-'}
-                                </td>
-                                <td className="px-3 py-3 text-sm text-gray-900">{payment.recipient || '-'}</td>
-                                <td className="px-3 py-3 text-sm text-gray-900">
-                                  {staffMap.get(payment.staff_type_id || 0) || '-'}
-                                </td>
-                                <td className="px-3 py-3 text-sm text-gray-900">
-                                  {methodMap.get(payment.payment_method_id || 0) || '-'}
-                                </td>
-                                <td className="px-3 py-3 text-sm font-semibold text-gray-900">
-                                  {payment.amount.toLocaleString()}원
-                                </td>
-                                <td className="px-3 py-3 text-sm text-gray-700">
-                                  {payment.bank_name ? `${payment.bank_name} ${maskAccount(payment.account_number)}` : '-'}
-                                  <div className="text-xs text-gray-400">
-                                    주민 {maskResident(payment.resident_number)}
-                                  </div>
-                                </td>
-                                <td className="px-3 py-3 text-sm text-gray-900">
-                                  <input
-                                    type="checkbox"
-                                    checked={payment.payment_status === 'completed'}
-                                    onChange={(e) => togglePaymentStatus(payment, e.target.checked ? 'completed' : 'pending')}
-                                  />
-                                </td>
-                              </tr>
-                            ))}
+                            {group.items.map((payment) => {
+                              const methodName = resolveMethodName(payment);
+                              const isInvoice = payment.source === 'payment' && methodName === '세금계산서';
+                              const isWithholding = payment.source === 'payment' && methodName === '원천징수';
+                              const isPersonalExpense = payment.source === 'expense';
+                              const invoiceValue = normalizeDateValue(payment.invoice_date);
+                              const paymentValue = normalizeDateValue(payment.payment_date);
+                              return (
+                                <tr key={payment.id}>
+                                  <td className="px-3 py-3 text-sm text-gray-900">
+                                    {projectMap.get(payment.project_id) || '-'}
+                                  </td>
+                                  <td className="px-3 py-3 text-sm text-gray-900">
+                                    <div>{payment.recipient || '-'}</div>
+                                    {payment.company_name && (
+                                      <div className="text-xs text-gray-500">{payment.company_name}</div>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-3 text-sm text-gray-900">
+                                    {resolveStaffLabel(payment)}
+                                  </td>
+                                  <td className="px-3 py-3 text-sm text-gray-900">
+                                    {methodName || '-'}
+                                  </td>
+                                  <td className="px-3 py-3 text-sm font-semibold text-gray-900">
+                                    {payment.amount.toLocaleString()}원
+                                  </td>
+                                  <td className="px-3 py-3 text-sm font-semibold text-gray-900">
+                                    {payment.source === 'expense' ? '-' : `${getActualAmount(payment).toLocaleString()}원`}
+                                  </td>
+                                  <td className="px-3 py-3 text-sm text-gray-700">
+                                    {payment.bank_name && payment.account_number
+                                      ? `${payment.bank_name} ${payment.account_number}`
+                                      : '-'}
+                                    <div className="text-xs text-gray-400">
+                                      주민 {maskResident(payment.resident_number)}
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-3 text-sm text-gray-900">
+                                    {isInvoice ? (
+                                      <div>
+                                        <div className="relative">
+                                          <input
+                                            id={`invoice-${payment.id}`}
+                                            type="date"
+                                            className={`w-full rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-[#1D32FB] focus:outline-none ${
+                                              invoiceValue ? 'text-gray-900' : 'text-transparent'
+                                            }`}
+                                            value={invoiceValue}
+                                            onChange={(e) =>
+                                              updatePaymentDates(payment, {
+                                                invoice_date: e.target.value ? e.target.value : null,
+                                              })
+                                            }
+                                          />
+                                          {!invoiceValue && (
+                                            <label
+                                              htmlFor={`invoice-${payment.id}`}
+                                              className="absolute inset-0 flex items-center px-2 text-xs text-gray-400 cursor-pointer"
+                                            >
+                                              입력
+                                            </label>
+                                          )}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className="mt-1 text-xs text-gray-400 hover:text-gray-600"
+                                          onClick={() => {
+                                            if (confirm('세금계산서 발행일을 초기화할까요?')) {
+                                              updatePaymentDates(payment, { invoice_date: null });
+                                            }
+                                          }}
+                                        >
+                                          발행일 초기화
+                                        </button>
+                                      </div>
+                                    ) : isPersonalExpense ? (
+                                      <span className="text-gray-500">개인 지출</span>
+                                    ) : isWithholding ? (
+                                      <span className="text-gray-500">원천징수</span>
+                                    ) : (
+                                      <span className="text-gray-400">-</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-3 text-sm text-gray-900">
+                                    {payment.source === 'payment' || payment.source === 'expense' ? (
+                                      <div>
+                                        <div className="relative">
+                                          <input
+                                            id={`payment-${payment.id}`}
+                                            type="date"
+                                            className={`w-full rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-[#1D32FB] focus:outline-none ${
+                                              paymentValue ? 'text-gray-900' : 'text-transparent'
+                                            }`}
+                                            value={paymentValue}
+                                            onChange={(e) =>
+                                              updatePaymentDates(payment, {
+                                                payment_date: e.target.value ? e.target.value : null,
+                                              })
+                                            }
+                                          />
+                                          {!paymentValue && (
+                                            <label
+                                              htmlFor={`payment-${payment.id}`}
+                                              className="absolute inset-0 flex items-center px-2 text-xs text-gray-400 cursor-pointer"
+                                            >
+                                              입력
+                                            </label>
+                                          )}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className="mt-1 text-xs text-gray-400 hover:text-gray-600"
+                                          onClick={() => {
+                                            if (confirm('지급일을 초기화할까요?')) {
+                                              updatePaymentDates(payment, {
+                                                payment_date: null,
+                                              });
+                                            }
+                                          }}
+                                        >
+                                          지급일 초기화
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span className="text-gray-400">-</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-3 text-sm text-gray-900 text-center whitespace-nowrap">
+                                    <input
+                                      type="checkbox"
+                                      checked={payment.payment_status === 'completed'}
+                                      onChange={(e) => togglePaymentStatus(payment, e.target.checked ? 'completed' : 'pending')}
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
