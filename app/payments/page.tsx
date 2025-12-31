@@ -28,6 +28,13 @@ type PersonalExpenseRow = {
   is_company_expense: boolean | null;
 };
 
+const normalizePaymentStatus = (value: string | null) => {
+  if (value === 'completed' || value === 'pending') {
+    return value;
+  }
+  return 'pending';
+};
+
 export default function PaymentListPage() {
   const [payments, setPayments] = useState<PaymentListItem[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -124,7 +131,7 @@ export default function PaymentListPage() {
         resident_number: null,
         id_card_url: null,
         bankbook_url: null,
-        payment_status: expense.payment_status || 'pending',
+        payment_status: normalizePaymentStatus(expense.payment_status),
         invoice_date: null,
         payment_date: expense.payment_date ?? null,
         memo: expense.description || expense.note || null,
