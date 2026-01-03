@@ -62,14 +62,19 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex justify-center mb-12">
-          <Image
-            src="/PEBS_logo.png"
-            alt="PEBS"
-            width={140}
-            height={46}
-            className="h-12 w-auto"
-            priority
-          />
+          <div className="flex items-center gap-3">
+            <Image
+              src="/PEBS_logo.png"
+              alt="PEBS"
+              width={120}
+              height={36}
+              className="h-10 w-auto"
+              priority
+            />
+            <span className="text-[15px] font-semibold tracking-[0.32em] text-gray-500">
+              DESK
+            </span>
+          </div>
         </div>
 
         {/* Login Form */}

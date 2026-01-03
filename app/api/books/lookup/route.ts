@@ -91,7 +91,7 @@ export async function POST(request: Request) {
       title: item.title || '',
       author: item.author || '',
       publisher: item.publisher || '',
-      price: item.priceStandard ?? item.priceSales ?? null,
+      price: item.priceSales ?? item.priceStandard ?? null,
       isbn13: item.isbn13 || '',
     });
   } catch (error) {

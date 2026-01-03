@@ -26,7 +26,7 @@ OCR 기능이 구현되었습니다. 아래 단계를 따라 설정을 완료하
 2. **Storage** → **Create bucket** 클릭
 3. 버킷 설정:
    - **Name**: `payment-images`
-   - **Public bucket**: ❌ 체크 해제 (보안상 private 권장)
+   - **Public bucket**: ✅ 체크 (이미지 URL 접근을 위해 필요)
 4. **Create bucket** 클릭
 
 ### 2. Google Cloud Vision API 설정
@@ -89,24 +89,10 @@ mv ~/Downloads/pebs-payment-ocr-*.json /Users/anjaehyeong/Documents/projects/peb
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://wthgqzuvabmmffpownxd.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-APP_SHARED_PASSWORD=your_shared_password
-SUPABASE_APP_USER_EMAIL=shared@company.com
-SUPABASE_APP_USER_PASSWORD=shared_account_password
 
 # Google Cloud Vision API - JSON 키 파일 경로
 GOOGLE_APPLICATION_CREDENTIALS=./google-cloud-key.json
 ```
-
-### Vercel 배포용 설정
-
-Vercel에서는 파일 경로 방식 대신 JSON 내용을 환경 변수로 넣어야 합니다.
-
-```
-GOOGLE_APPLICATION_CREDENTIALS_JSON={"type":"service_account","project_id":"...","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n","client_email":"...","client_id":"..."}
-```
-
-`GOOGLE_APPLICATION_CREDENTIALS_JSON`이 설정되어 있으면 파일 경로는 사용하지 않습니다.
 
 ### 4. 서버 재시작
 
@@ -126,8 +112,7 @@ npm run dev
 
 1. 브라우저에서 프로젝트 상세 페이지 접속
 2. **+ 새 지급 내역** 버튼 클릭
-3. **신분증/통장 업로드** 영역에 이미지를 드래그하거나 붙여넣기(Cmd/Ctrl+V)
-   - 여러 장을 한 번에 업로드할 수 있습니다.
+3. **신분증/통장 업로드 (OCR 자동 인식)** 영역에 이미지 드래그&드롭 또는 붙여넣기(Cmd/Ctrl+V)
 4. **인식** 버튼 클릭
    - 주민등록번호/은행명/계좌번호가 자동으로 채워짐
    - 이미지가 Supabase Storage에 저장됨
@@ -164,8 +149,7 @@ OCR이 자동 인식하는 은행:
 
 **해결**:
 1. Supabase 대시보드에서 `payment-images` 버킷 생성 확인
-2. `.env.local`에 `SUPABASE_SERVICE_ROLE_KEY`가 설정되어 있는지 확인
-3. Storage 정책에서 `payment-images` 버킷 정책이 적용되어 있는지 확인
+2. 버킷이 **Public**으로 설정되어 있는지 확인
 
 ### "OCR 처리에 실패했습니다"
 
@@ -235,15 +219,13 @@ Google Drive에 이미지를 자동 백업하려면:
 ## 설정 완료 체크리스트
 
 - [ ] Supabase Storage에 `payment-images` 버킷 생성
-- [ ] 버킷을 private으로 설정
+- [ ] 버킷을 Public으로 설정
 - [ ] Google Cloud 프로젝트 생성
 - [ ] Cloud Vision API 활성화
 - [ ] 서비스 계정 생성 및 역할 부여
 - [ ] JSON 키 파일 다운로드
 - [ ] `google-cloud-key.json` 파일을 프로젝트 루트에 저장
 - [ ] `.env.local` 파일에 환경 변수 확인
-- [ ] Supabase RLS 정책 적용 (`supabase/policies.sql`)
-- [ ] Supabase Auth에 공용 계정 생성 (이메일/비밀번호)
 - [ ] 개발 서버 재시작
 - [ ] 테스트 이미지로 OCR 기능 테스트
 

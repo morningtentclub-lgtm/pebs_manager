@@ -7,13 +7,14 @@ type BookPurchase = {
   id: string;
   requester_name: string;
   purchase_date: string;
-  aladin_url: string;
+  aladin_url: string | null;
   title: string | null;
   author: string | null;
   publisher: string | null;
   price: number | null;
   isbn13: string | null;
   created_at: string;
+  updated_at: string | null;
 };
 
 const NAME_OPTIONS = [
@@ -54,6 +55,9 @@ export default function BookSupportPage() {
   const [formError, setFormError] = useState('');
   const [listError, setListError] = useState('');
   const [monthlyTotal, setMonthlyTotal] = useState<number | null>(null);
+  const [sortMode, setSortMode] = useState<'updated' | 'requester'>('updated');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [editingPurchaseId, setEditingPurchaseId] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     aladin_url: '',
@@ -72,6 +76,7 @@ export default function BookSupportPage() {
     const { data, error } = await supabase
       .from('book_purchases')
       .select('*')
+      .order('updated_at', { ascending: false })
       .order('purchase_date', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -165,27 +170,48 @@ export default function BookSupportPage() {
 
   const handleSubmit = async () => {
     setFormError('');
-    if (!form.aladin_url.trim() || !form.requester_name || !form.purchase_date) {
-      setFormError('링크, 이름, 구매일을 입력해주세요.');
+    if (!form.requester_name || !form.purchase_date) {
+      setFormError('이름과 구매일을 입력해주세요.');
+      return;
+    }
+    if (!form.title.trim()) {
+      setFormError('책 제목을 입력해주세요.');
+      return;
+    }
+    if (!priceValue) {
+      setFormError('가격을 입력해주세요.');
       return;
     }
 
     const payload = {
       requester_name: form.requester_name,
       purchase_date: form.purchase_date,
-      aladin_url: form.aladin_url.trim(),
+      aladin_url: form.aladin_url.trim() || null,
       title: form.title.trim() || null,
       author: form.author.trim() || null,
       publisher: form.publisher.trim() || null,
       price: priceValue || null,
       isbn13: form.isbn13.trim() || null,
+      updated_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from('book_purchases').insert([payload]);
-    if (error) {
-      console.error(error);
-      setFormError('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
-      return;
+    if (editingPurchaseId) {
+      const { error } = await supabase
+        .from('book_purchases')
+        .update(payload)
+        .eq('id', editingPurchaseId);
+      if (error) {
+        console.error(error);
+        setFormError('수정에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        return;
+      }
+    } else {
+      const { error } = await supabase.from('book_purchases').insert([payload]);
+      if (error) {
+        console.error(error);
+        setFormError('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        return;
+      }
     }
 
     setForm({
@@ -199,8 +225,126 @@ export default function BookSupportPage() {
       isbn13: '',
     });
     setMonthlyTotal(null);
+    setEditingPurchaseId(null);
     fetchPurchases();
   };
+
+  const handleEdit = (purchase: BookPurchase) => {
+    setEditingPurchaseId(purchase.id);
+    setForm({
+      aladin_url: purchase.aladin_url || '',
+      requester_name: purchase.requester_name,
+      purchase_date: purchase.purchase_date,
+      title: purchase.title || '',
+      author: purchase.author || '',
+      publisher: purchase.publisher || '',
+      price: purchase.price ? String(purchase.price) : '',
+      isbn13: purchase.isbn13 || '',
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPurchaseId(null);
+    setForm({
+      aladin_url: '',
+      requester_name: '',
+      purchase_date: '',
+      title: '',
+      author: '',
+      publisher: '',
+      price: '',
+      isbn13: '',
+    });
+    setFormError('');
+    setMonthlyTotal(null);
+  };
+
+  const handleDelete = async (purchase: BookPurchase) => {
+    if (!confirm('해당 구매 신청을 삭제할까요?')) return;
+    const { error } = await supabase
+      .from('book_purchases')
+      .delete()
+      .eq('id', purchase.id);
+    if (error) {
+      console.error(error);
+      setFormError('삭제에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+    fetchPurchases();
+  };
+
+  const filteredPurchases = purchases.filter((purchase) => {
+    if (!searchQuery.trim()) return true;
+    const target = (purchase.title || '').toLowerCase();
+    return target.includes(searchQuery.trim().toLowerCase());
+  });
+
+  const sortedPurchases = [...filteredPurchases].sort((a, b) => {
+    const aTime = new Date(a.updated_at || a.created_at).getTime();
+    const bTime = new Date(b.updated_at || b.created_at).getTime();
+    return bTime - aTime;
+  });
+
+  const groupedRows = useMemo(() => {
+    if (sortMode !== 'requester') {
+      return [];
+    }
+    const grouped = new Map<string, BookPurchase[]>();
+    filteredPurchases.forEach((purchase) => {
+      const key = purchase.requester_name;
+      const list = grouped.get(key) || [];
+      list.push(purchase);
+      grouped.set(key, list);
+    });
+
+    const rows: Array<
+      | { type: 'header'; id: string; title: string }
+      | { type: 'purchase'; id: string; purchase: BookPurchase }
+      | { type: 'subtotal'; id: string; label: string; amount: number }
+    > = [];
+
+    Array.from(grouped.keys())
+      .sort((a, b) => a.localeCompare(b, 'ko'))
+      .forEach((name) => {
+        const items = grouped.get(name) || [];
+        items.sort((a, b) => {
+          const aDate = new Date(a.purchase_date).getTime();
+          const bDate = new Date(b.purchase_date).getTime();
+          if (aDate !== bDate) return bDate - aDate;
+          const aTime = new Date(a.updated_at || a.created_at).getTime();
+          const bTime = new Date(b.updated_at || b.created_at).getTime();
+          return bTime - aTime;
+        });
+
+        rows.push({ type: 'header', id: `header-${name}`, title: name });
+
+        const monthMap = new Map<string, BookPurchase[]>();
+        items.forEach((purchase) => {
+          const monthKey = purchase.purchase_date.slice(0, 7);
+          const monthItems = monthMap.get(monthKey) || [];
+          monthItems.push(purchase);
+          monthMap.set(monthKey, monthItems);
+        });
+
+        Array.from(monthMap.keys())
+          .sort((a, b) => b.localeCompare(a))
+          .forEach((monthKey) => {
+            const monthItems = monthMap.get(monthKey) || [];
+            monthItems.forEach((purchase) => {
+              rows.push({ type: 'purchase', id: purchase.id, purchase });
+            });
+            const subtotal = monthItems.reduce((sum, purchase) => sum + (purchase.price || 0), 0);
+            rows.push({
+              type: 'subtotal',
+              id: `subtotal-${name}-${monthKey}`,
+              label: `${monthKey} 합계`,
+              amount: subtotal,
+            });
+          });
+      });
+
+    return rows;
+  }, [filteredPurchases, sortMode]);
 
   return (
     <div className="min-h-screen page-shell">
@@ -215,18 +359,18 @@ export default function BookSupportPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-[--gray-700] mb-1">알라딘 링크</label>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <input
                     type="text"
                     value={form.aladin_url}
                     onChange={(e) => setForm((prev) => ({ ...prev, aladin_url: e.target.value }))}
-                    className="flex-1 h-11 px-3 border border-[--border] rounded-xl bg-white text-sm"
+                    className="flex-1 min-w-0 h-11 px-3 border border-[--border] rounded-xl bg-white text-sm"
                     placeholder="https://www.aladin.co.kr/..."
                   />
                   <button
                     type="button"
                     onClick={handleLookup}
-                    className="btn-primary px-4 h-11 rounded-xl text-sm"
+                    className="btn-primary h-11 w-full rounded-xl text-sm whitespace-nowrap sm:w-auto sm:min-w-[120px] sm:px-4"
                     disabled={lookupLoading}
                   >
                     {lookupLoading ? '가져오는 중' : '정보 가져오기'}
@@ -297,7 +441,7 @@ export default function BookSupportPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[--gray-700] mb-1">가격</label>
+                  <label className="block text-sm font-medium text-[--gray-700] mb-1">가격(판매가)</label>
                   <input
                     type="text"
                     value={formatAmount(form.price)}
@@ -320,20 +464,60 @@ export default function BookSupportPage() {
                 <div className="text-xs text-red-600">{formError}</div>
               )}
 
-              <button
-                type="button"
-                onClick={handleSubmit}
-                className="btn-primary w-full h-11 rounded-xl text-sm"
-              >
-                저장
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  className="btn-primary flex-1 h-11 rounded-xl text-sm"
+                >
+                  {editingPurchaseId ? '수정 저장' : '저장'}
+                </button>
+                {editingPurchaseId && (
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="btn-outline flex-1 h-11 rounded-xl text-sm"
+                  >
+                    취소
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
           <div className="bg-white border border-[--border] rounded-2xl p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-lg font-semibold">도서 신청 목록</h2>
-              <span className="text-xs text-[--gray-500]">{purchases.length}건</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-10 w-[200px] px-3 border border-[--border] rounded-xl text-sm"
+                    placeholder="책 이름 검색"
+                  />
+                </div>
+                <div className="relative">
+                  <select
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value as 'updated' | 'requester')}
+                    className="h-10 w-[160px] px-3 pr-9 border border-[--border] rounded-xl bg-white text-sm appearance-none"
+                  >
+                    <option value="updated">업데이트순</option>
+                    <option value="requester">구매자별</option>
+                  </select>
+                  <svg
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[--gray-400]"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path d="M5.5 7.5L10 12l4.5-4.5" />
+                  </svg>
+                </div>
+                <span className="text-xs text-[--gray-500]">{filteredPurchases.length}건</span>
+              </div>
             </div>
             {listError && (
               <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
@@ -342,43 +526,93 @@ export default function BookSupportPage() {
             )}
             {loading ? (
               <div className="text-sm text-[--gray-500]">불러오는 중...</div>
-            ) : purchases.length === 0 ? (
+            ) : filteredPurchases.length === 0 ? (
               <div className="text-sm text-[--gray-500]">등록된 도서 신청이 없습니다.</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="min-w-[760px] w-full text-sm">
                   <thead className="text-xs text-[--gray-500] uppercase border-b border-[--border]">
                     <tr>
                       <th className="py-2 text-left">구매일</th>
                       <th className="py-2 text-left">이름</th>
                       <th className="py-2 text-left">도서 정보</th>
                       <th className="py-2 text-right">가격</th>
+                      <th className="py-2 text-right">관리</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {purchases.map((purchase) => (
-                      <tr key={purchase.id} className="border-b border-[--border]">
-                        <td className="py-3">{purchase.purchase_date}</td>
-                        <td className="py-3 font-medium">{purchase.requester_name}</td>
-                        <td className="py-3">
-                          <div className="font-medium text-[--foreground]">{purchase.title || '제목 없음'}</div>
-                          <div className="text-xs text-[--gray-500]">
-                            {purchase.author || '-'} · {purchase.publisher || '-'}
-                          </div>
-                          <a
-                            href={purchase.aladin_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-[--gray-500] hover:text-[--primary]"
-                          >
-                            알라딘 링크
-                          </a>
-                        </td>
-                        <td className="py-3 text-right font-semibold">
-                          {purchase.price ? `${purchase.price.toLocaleString()}원` : '-'}
-                        </td>
-                      </tr>
-                    ))}
+                    {(sortMode === 'requester' ? groupedRows : sortedPurchases.map((purchase) => ({
+                      type: 'purchase' as const,
+                      id: purchase.id,
+                      purchase,
+                    }))).map((row) => {
+                      if (row.type === 'header') {
+                        return (
+                          <tr key={row.id} className="bg-[--gray-50]">
+                            <td colSpan={5} className="py-2 text-sm font-semibold text-[--gray-700]">
+                              {row.title}
+                            </td>
+                          </tr>
+                        );
+                      }
+                      if (row.type === 'subtotal') {
+                        return (
+                          <tr key={row.id} className="bg-white">
+                            <td colSpan={3} className="py-2 text-xs text-[--gray-500]">
+                              {row.label}
+                            </td>
+                            <td className="py-2 text-right text-xs font-semibold text-[--gray-700]">
+                              {row.amount.toLocaleString()}원
+                            </td>
+                            <td />
+                          </tr>
+                        );
+                      }
+                      const purchase = row.purchase;
+                      return (
+                        <tr key={row.id} className="border-b border-[--border]">
+                          <td className="py-3">{purchase.purchase_date}</td>
+                          <td className="py-3 font-medium">{purchase.requester_name}</td>
+                          <td className="py-3">
+                            <div className="font-medium text-[--foreground]">{purchase.title || '제목 없음'}</div>
+                            <div className="text-xs text-[--gray-500]">
+                              {purchase.author || '-'} · {purchase.publisher || '-'}
+                            </div>
+                            {purchase.aladin_url && (
+                              <a
+                                href={purchase.aladin_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs text-[--gray-500] hover:text-[--primary]"
+                              >
+                                알라딘 링크
+                              </a>
+                            )}
+                          </td>
+                          <td className="py-3 text-right font-semibold">
+                            {purchase.price ? `${purchase.price.toLocaleString()}원` : '-'}
+                          </td>
+                          <td className="py-3 text-right">
+                            <div className="flex items-center justify-end gap-2 text-xs">
+                              <button
+                                type="button"
+                                onClick={() => handleEdit(purchase)}
+                                className="text-[--primary] hover:text-[--primary-light]"
+                              >
+                                수정
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(purchase)}
+                                className="text-[--accent] hover:text-[--accent-hover]"
+                              >
+                                삭제
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

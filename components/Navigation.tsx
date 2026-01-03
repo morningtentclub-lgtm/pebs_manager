@@ -15,7 +15,7 @@ export default function Navigation() {
 
   const isActive = (path: string) => {
     if (path === '/') {
-      return pathname === '/';
+      return pathname === '/' || pathname.startsWith('/projects') || pathname.startsWith('/payments');
     }
     return pathname.startsWith(path);
   };
@@ -46,22 +46,12 @@ export default function Navigation() {
             <Link
               href="/"
               className={`text-[15px] font-semibold transition-colors ${
-                isActive('/') && !isActive('/payments')
+                isActive('/')
                   ? 'text-black'
                   : 'text-gray-500 hover:text-black'
               }`}
             >
-              프로젝트
-            </Link>
-            <Link
-              href="/payments"
-              className={`text-[15px] font-semibold transition-colors ${
-                isActive('/payments')
-                  ? 'text-black'
-                  : 'text-gray-500 hover:text-black'
-              }`}
-            >
-              지급 내역
+              계약금 지급 관리
             </Link>
             <Link
               href="/books"

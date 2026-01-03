@@ -201,11 +201,13 @@ export default function PaymentListPage() {
   const staffMap = useMemo(() => new Map(staffTypes.map((st) => [st.id, st.name])), [staffTypes]);
   const methodMap = useMemo(() => new Map(paymentMethods.map((pm) => [pm.id, pm.name])), [paymentMethods]);
 
-  const maskResident = (value: string | null) => {
-    if (!value) return '-';
+  const formatResident = (value: string | null) => {
+    if (!value) return '';
     const digits = value.replace(/[^0-9]/g, '');
-    if (digits.length < 7) return digits;
-    return `${digits.slice(0, 6)}-*******`;
+    if (digits.length === 13) {
+      return `${digits.slice(0, 6)}-${digits.slice(6)}`;
+    }
+    return digits;
   };
 
 
@@ -385,6 +387,7 @@ export default function PaymentListPage() {
     return staffName;
   };
 
+
   return (
     <div className="min-h-screen page-shell">
       <div className="bg-white/80 backdrop-blur-xl border-b border-gray-100 shadow-sm sticky top-0 z-40">
@@ -512,7 +515,7 @@ export default function PaymentListPage() {
                         <span className="text-xs text-gray-400">{group.items.length}건</span>
                       </div>
                       <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                        <table className="w-full table-fixed divide-y divide-gray-200">
+                        <table className="min-w-[1200px] table-fixed divide-y divide-gray-200">
                           <colgroup>
                             <col className="w-[12%]" />
                             <col className="w-[12%]" />
@@ -571,12 +574,31 @@ export default function PaymentListPage() {
                                     {payment.source === 'expense' ? '-' : `${getActualAmount(payment).toLocaleString()}원`}
                                   </td>
                                   <td className="px-3 py-3 text-sm text-gray-700">
-                                    {payment.bank_name && payment.account_number
-                                      ? `${payment.bank_name} ${payment.account_number}`
-                                      : '-'}
-                                    <div className="text-xs text-gray-400">
-                                      주민 {maskResident(payment.resident_number)}
-                                    </div>
+                                    {(() => {
+                                      const accountNumber = payment.account_number || '';
+                                      const bankName = payment.bank_name || '';
+                                      const residentNumber = payment.resident_number || '';
+                                      const accountLabel = accountNumber
+                                        ? `${bankName ? `${bankName} ` : ''}${accountNumber}`
+                                        : '';
+                                      const residentLabel = formatResident(residentNumber);
+                                      const hasAccount = accountLabel.length > 0;
+                                      const hasResident = residentLabel.length > 0;
+                                      if (!hasAccount && !hasResident) {
+                                        return null;
+                                      }
+                                      const isSingleLine = (hasAccount ? 1 : 0) + (hasResident ? 1 : 0) === 1;
+                                      return (
+                                        <div className={`flex h-full flex-col ${isSingleLine ? 'justify-center' : ''}`}>
+                                          {hasAccount && <div>{accountLabel}</div>}
+                                          {hasResident && (
+                                            <div className="text-xs text-gray-400">
+                                              주민 {residentLabel}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
                                   </td>
                                   <td className="px-3 py-3 text-sm text-gray-900">
                                     {isInvoice ? (

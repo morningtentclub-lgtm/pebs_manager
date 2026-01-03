@@ -1239,7 +1239,7 @@ export default function ProjectDetailPage() {
             </svg>
             프로젝트 목록으로
           </Link>
-          <div className="flex items-start justify-between mt-2">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mt-2">
             <div>
               <h1 className="text-[32px] font-bold mb-2 tracking-tight">
                 {project.name}
@@ -1253,7 +1253,7 @@ export default function ProjectDetailPage() {
                 </div>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <select
                 value={project.status}
                 onChange={(e) => updateProjectStatus(e.target.value as 'ongoing' | 'completed')}
@@ -1336,7 +1336,7 @@ export default function ProjectDetailPage() {
           <div className="p-6">
             {activeTab === 'payments' && (
               <div>
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
                   <h2 className="text-[20px] font-bold text-gray-900">지급 내역</h2>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
@@ -1378,7 +1378,7 @@ export default function ProjectDetailPage() {
                   <p className="text-center py-12 text-gray-500">지급 내역이 없습니다.</p>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
+                    <table className="w-full min-w-[900px] divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">수령인</th>
@@ -1445,7 +1445,7 @@ export default function ProjectDetailPage() {
 
             {activeTab === 'expenses' && (
               <div>
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
                   <h2 className="text-[20px] font-bold text-gray-900">지출 내역서</h2>
                   <button
                     onClick={() => {
@@ -1486,7 +1486,7 @@ export default function ProjectDetailPage() {
                   <p className="text-center py-12 text-gray-500">지출 내역이 없습니다.</p>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
+                    <table className="w-full min-w-[1100px] divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">날짜</th>

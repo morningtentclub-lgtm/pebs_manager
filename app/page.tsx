@@ -88,8 +88,8 @@ export default function Home() {
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h1 className="text-[32px] font-bold mb-2 tracking-tight">프로젝트</h1>
-              <p className="text-[15px] text-gray-600">진행 중인 계약금 지급 프로젝트를 관리하세요</p>
+              <h1 className="text-[32px] font-bold mb-2 tracking-tight">계약금 지급 관리</h1>
+              <p className="text-[15px] text-gray-600">진행 중인 계약금 지급을 관리하세요</p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end lg:gap-4">
               <div className="flex flex-wrap items-center gap-2">
@@ -109,12 +109,20 @@ export default function Home() {
                   </button>
                 ))}
               </div>
-              <button
-                onClick={() => setShowNewProjectForm(true)}
-                className="px-6 py-3 bg-black text-white text-[14px] font-semibold rounded-lg hover:bg-[--primary-light] transition-colors"
-              >
-                새 프로젝트 등록
-              </button>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/payments"
+                  className="px-6 py-3 bg-white text-[14px] font-semibold rounded-lg border border-gray-200 hover:border-black transition-colors"
+                >
+                  지급 내역 리스트
+                </Link>
+                <button
+                  onClick={() => setShowNewProjectForm(true)}
+                  className="px-6 py-3 bg-black text-white text-[14px] font-semibold rounded-lg hover:bg-[--primary-light] transition-colors"
+                >
+                  새 프로젝트 등록
+                </button>
+              </div>
             </div>
           </div>
         </div>
