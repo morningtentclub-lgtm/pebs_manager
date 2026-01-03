@@ -46,6 +46,10 @@ export default function PaymentListPage() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('project');
   const [viewStatus, setViewStatus] = useState<ViewStatus>('pending');
+  const [accessGranted, setAccessGranted] = useState(false);
+  const [accessPassword, setAccessPassword] = useState('');
+  const [accessError, setAccessError] = useState('');
+  const [accessChecking, setAccessChecking] = useState(false);
   const fetchAll = useCallback(async (silent?: boolean) => {
     if (silent) {
       setRefreshing(true);
@@ -173,13 +177,28 @@ export default function PaymentListPage() {
   }, []);
 
   useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+    if (typeof window === 'undefined') return;
+    const stored = window.sessionStorage.getItem('paymentsAccess');
+    if (stored === '1') {
+      setAccessGranted(true);
+    } else {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const handleFocus = () => fetchAll(true);
+    if (accessGranted) {
+      fetchAll();
+    }
+  }, [accessGranted, fetchAll]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      if (!accessGranted) return;
+      fetchAll(true);
+    };
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && accessGranted) {
         fetchAll(true);
       }
     };
@@ -191,7 +210,7 @@ export default function PaymentListPage() {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [fetchAll]);
+  }, [fetchAll, accessGranted]);
 
   const projectMap = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
   const projectOrderMap = useMemo(() => {
@@ -387,6 +406,69 @@ export default function PaymentListPage() {
     return staffName;
   };
 
+  const handleAccessSubmit = async () => {
+    if (!accessPassword) return;
+    setAccessChecking(true);
+    setAccessError('');
+    try {
+      const response = await fetch('/api/payments-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: accessPassword }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setAccessError(data?.error || '비밀번호가 올바르지 않습니다.');
+        setAccessChecking(false);
+        return;
+      }
+      window.sessionStorage.setItem('paymentsAccess', '1');
+      setAccessGranted(true);
+      setAccessPassword('');
+    } catch (error) {
+      console.error('지급 내역 접근 확인 실패:', error);
+      setAccessError('비밀번호 확인에 실패했습니다.');
+    } finally {
+      setAccessChecking(false);
+    }
+  };
+
+  if (!accessGranted) {
+    return (
+      <div className="min-h-screen page-shell">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <h1 className="text-3xl font-bold">지급 내역 리스트</h1>
+          <p className="mt-2 text-sm text-gray-600">보안을 위해 비밀번호를 입력해주세요.</p>
+          <div className="mt-8 max-w-md rounded-2xl border border-[--border] bg-white p-6 shadow-sm">
+            <label className="block text-sm font-medium text-[--gray-700] mb-2">비밀번호</label>
+            <input
+              type="password"
+              value={accessPassword}
+              onChange={(e) => setAccessPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleAccessSubmit();
+                }
+              }}
+              className="h-11 w-full px-3 border border-[--border] rounded-xl bg-white text-sm"
+              placeholder="비밀번호 입력"
+            />
+            {accessError && (
+              <div className="mt-2 text-xs text-red-600">{accessError}</div>
+            )}
+            <button
+              type="button"
+              onClick={handleAccessSubmit}
+              disabled={!accessPassword || accessChecking}
+              className="btn-primary mt-4 h-11 w-full rounded-xl text-sm disabled:opacity-60"
+            >
+              {accessChecking ? '확인 중...' : '확인'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen page-shell">

@@ -23,9 +23,9 @@ export default function Navigation() {
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-[--border]">
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-[80px]">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center h-[80px]">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity justify-self-start">
             <div className="flex items-center gap-3">
               <Image
                 src="/PEBS_logo.png"
@@ -42,7 +42,7 @@ export default function Navigation() {
           </Link>
 
           {/* Navigation Links */}
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-8 justify-self-center">
             <Link
               href="/"
               className={`text-[15px] font-semibold transition-colors ${
@@ -66,7 +66,7 @@ export default function Navigation() {
           </div>
 
           {/* Right Section */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 justify-self-end">
             <SignOutButton className="text-[14px] font-medium text-gray-600 hover:text-black transition-colors px-4 py-2" />
           </div>
         </div>

@@ -58,8 +58,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-white px-4 py-12">
+      <div className="w-full max-w-sm text-center">
         {/* Logo */}
         <div className="flex justify-center mb-12">
           <div className="flex items-center gap-3">
@@ -79,7 +79,7 @@ export default function LoginPage() {
 
         {/* Login Form */}
         <div className="space-y-4">
-          <div>
+          <div className="text-left">
             <label className="block text-[13px] font-semibold text-gray-700 mb-2">
               비밀번호
             </label>
