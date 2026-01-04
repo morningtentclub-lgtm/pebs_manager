@@ -4,8 +4,8 @@ import Navigation from "@/components/Navigation";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PEBS 계약금 지급 관리",
-  description: "펩스 계약금 지급 관리 시스템",
+  title: "PEBS Desk",
+  description: "PEBS Desk 내부 관리 시스템",
 };
 
 export default function RootLayout({
