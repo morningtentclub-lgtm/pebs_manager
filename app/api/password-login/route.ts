@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { normalizeKoreanInput } from '@/lib/koreanKeyboard';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -11,6 +12,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const password = body?.password as string | undefined;
+    const normalizedPassword = password ? normalizeKoreanInput(password) : '';
 
     if (!sharedPassword || !appUserEmail || !appUserPassword || !supabaseUrl || !supabaseAnonKey) {
       return NextResponse.json(
@@ -19,7 +21,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!password || password !== sharedPassword) {
+    if (!password || normalizedPassword !== sharedPassword) {
       return NextResponse.json({ error: '비밀번호가 올바르지 않습니다.' }, { status: 401 });
     }
 
