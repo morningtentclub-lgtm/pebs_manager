@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       .from('app_settings')
       .select('value')
       .eq('key', 'payments_access_password')
-      .maybeSingle();
+      .maybeSingle<{ value: string }>();
 
     if (error) {
       return NextResponse.json({ error: '지급 내역 비밀번호를 불러오지 못했습니다.' }, { status: 500 });
