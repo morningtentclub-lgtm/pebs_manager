@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Project } from '@/lib/types';
 import Link from 'next/link';
@@ -10,6 +10,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'ongoing' | 'completed'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortMode, setSortMode] = useState<'recent' | 'year-month'>('recent');
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [newProject, setNewProject] = useState({ name: '', client: '' });
 
@@ -75,6 +76,67 @@ export default function Home() {
     return bTime - aTime;
   });
 
+  const yearMonthGroups = useMemo(() => {
+    const yearMap = new Map<number, Map<number, Project[]>>();
+    filteredProjects.forEach((project) => {
+      const created = new Date(project.created_at);
+      if (Number.isNaN(created.getTime())) return;
+      const year = created.getFullYear();
+      const month = created.getMonth() + 1;
+      const monthMap = yearMap.get(year) ?? new Map<number, Project[]>();
+      const list = monthMap.get(month) ?? [];
+      list.push(project);
+      monthMap.set(month, list);
+      yearMap.set(year, monthMap);
+    });
+
+    return Array.from(yearMap.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([year, monthMap]) => {
+        const months = Array.from(monthMap.entries())
+          .sort((a, b) => b[0] - a[0])
+          .map(([month, items]) => ({
+            month,
+            items: items.sort(
+              (a, b) =>
+                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            ),
+          }));
+        return { year, months };
+      });
+  }, [filteredProjects]);
+
+  const renderProjectCard = (project: Project) => (
+    <Link
+      key={project.id}
+      href={`/projects/${project.id}`}
+      className="group bg-white rounded-lg border border-[--border] hover:border-black transition-all p-6"
+    >
+      <div className="flex items-start justify-between mb-3">
+        <h3 className="text-[16px] font-bold flex-1 group-hover:underline">{project.name}</h3>
+        <span className={`ml-2 px-2.5 py-1 text-[11px] font-bold rounded ${
+          project.status === 'completed'
+            ? 'bg-green-50 text-[--success]'
+            : 'bg-red-50 text-[--accent]'
+        }`}>
+          {project.status === 'completed' ? '완료' : '진행 중'}
+        </span>
+      </div>
+
+      {project.client && (
+        <div className="text-[14px] text-gray-600 mb-3">{project.client}</div>
+      )}
+
+      <div className="text-[13px] text-gray-400">
+        {new Date(project.created_at).toLocaleDateString('ko-KR', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        })}
+      </div>
+    </Link>
+  );
+
   const stats = {
     total: projects.length,
     ongoing: projects.filter(p => p.status !== 'completed').length,
@@ -131,8 +193,19 @@ export default function Home() {
       {/* Main Content */}
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Filters */}
-        <div className="flex items-center justify-end mb-6">
-          <div className="relative w-[280px]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <label className="text-[13px] font-semibold text-gray-600">정렬 기준</label>
+            <select
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as 'recent' | 'year-month')}
+              className="px-3 py-2 text-[14px] border border-[--border] rounded-lg focus:outline-none focus:border-black transition-colors bg-white"
+            >
+              <option value="recent">최근 수정순</option>
+              <option value="year-month">연도/월별</option>
+            </select>
+          </div>
+          <div className="relative w-full sm:w-[280px]">
             <input
               type="text"
               placeholder="프로젝트 검색"
@@ -166,38 +239,29 @@ export default function Home() {
               새 프로젝트 등록하기
             </button>
           </div>
+        ) : sortMode === 'year-month' ? (
+          <div className="space-y-8">
+            {yearMonthGroups.map((yearGroup) => (
+              <div key={yearGroup.year}>
+                <h2 className="text-[20px] font-bold text-gray-900 mb-4">{yearGroup.year}년</h2>
+                <div className="space-y-6">
+                  {yearGroup.months.map((monthGroup) => (
+                    <div key={`${yearGroup.year}-${monthGroup.month}`}>
+                      <div className="text-[14px] font-semibold text-gray-600 mb-3">
+                        {monthGroup.month}월
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {monthGroup.items.map(renderProjectCard)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {sortedProjects.map((project) => (
-              <Link
-                key={project.id}
-                href={`/projects/${project.id}`}
-                className="group bg-white rounded-lg border border-[--border] hover:border-black transition-all p-6"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="text-[16px] font-bold flex-1 group-hover:underline">{project.name}</h3>
-                  <span className={`ml-2 px-2.5 py-1 text-[11px] font-bold rounded ${
-                    project.status === 'completed'
-                      ? 'bg-green-50 text-[--success]'
-                      : 'bg-red-50 text-[--accent]'
-                  }`}>
-                    {project.status === 'completed' ? '완료' : '진행 중'}
-                  </span>
-                </div>
-
-                {project.client && (
-                  <div className="text-[14px] text-gray-600 mb-3">{project.client}</div>
-                )}
-
-                <div className="text-[13px] text-gray-400">
-                  {new Date(project.created_at).toLocaleDateString('ko-KR', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </div>
-              </Link>
-            ))}
+            {sortedProjects.map(renderProjectCard)}
           </div>
         )}
       </div>
