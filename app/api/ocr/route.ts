@@ -23,9 +23,12 @@ function getSupabaseClient() {
     throw new Error('Supabase 환경 변수가 설정되지 않았습니다.');
   }
 
+  if (!supabaseServiceRoleKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY가 설정되어 있지 않습니다.');
+  }
+
   if (!supabaseServer) {
-    const key = supabaseServiceRoleKey || supabaseAnonKey;
-    supabaseServer = createClient(supabaseUrl, key, {
+    supabaseServer = createClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: { persistSession: false },
     });
   }
@@ -302,10 +305,14 @@ export async function POST(request: NextRequest) {
 
     if (uploadError) {
       console.error('이미지 업로드 실패:', uploadError);
+      const detail = uploadError.message || '';
+      const hint = detail.toLowerCase().includes('row-level security')
+        ? '스토리지 RLS 정책 또는 서비스 롤 키를 확인해주세요.'
+        : '';
       return NextResponse.json(
         {
           error: '이미지 업로드에 실패했습니다.',
-          details: uploadError.message,
+          details: [detail, hint].filter(Boolean).join(' '),
         },
         { status: 500 }
       );
