@@ -29,7 +29,10 @@ function getSupabaseClient() {
 
   if (!supabaseServer) {
     supabaseServer = createClient(supabaseUrl, supabaseServiceRoleKey, {
-      auth: { persistSession: false },
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
     });
   }
 
@@ -296,6 +299,9 @@ export async function POST(request: NextRequest) {
     const folderName = type === 'auto' ? 'uploads' : `${type}s`;
     const filePath = `${folderName}/${fileName}`;
 
+    console.log('[OCR] Uploading to storage with Service Role Key...');
+    console.log('[OCR] File path:', filePath);
+
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('payment-images')
       .upload(filePath, buffer, {
@@ -304,7 +310,8 @@ export async function POST(request: NextRequest) {
       });
 
     if (uploadError) {
-      console.error('이미지 업로드 실패:', uploadError);
+      console.error('[OCR] 이미지 업로드 실패:', uploadError);
+      console.error('[OCR] Error details:', JSON.stringify(uploadError, null, 2));
       const detail = uploadError.message || '';
       const hint = detail.toLowerCase().includes('row-level security')
         ? '스토리지 RLS 정책 또는 서비스 롤 키를 확인해주세요.'
@@ -317,6 +324,8 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    console.log('[OCR] Upload successful:', uploadData?.path);
 
     // 3. 업로드된 이미지의 Signed URL 생성 (짧은 만료)
     const { data: signedData, error: signedError } = await supabase.storage
