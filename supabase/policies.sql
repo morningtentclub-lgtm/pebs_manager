@@ -88,43 +88,29 @@ for all
 using (auth.role() = 'authenticated')
 with check (auth.role() = 'authenticated');
 
--- Storage: restrict access to authenticated users and service role for payment-images bucket
+-- Storage: public access for payment-images bucket
 drop policy if exists "payment_images_auth_select" on storage.objects;
-create policy "payment_images_auth_select"
+drop policy if exists "payment_images_auth_insert" on storage.objects;
+drop policy if exists "payment_images_auth_update" on storage.objects;
+drop policy if exists "payment_images_auth_delete" on storage.objects;
+
+create policy "payment_images_public_select"
 on storage.objects
 for select
-using (
-  bucket_id = 'payment-images'
-  and (auth.role() = 'authenticated' or auth.role() = 'service_role')
-);
+using (bucket_id = 'payment-images');
 
-drop policy if exists "payment_images_auth_insert" on storage.objects;
-create policy "payment_images_auth_insert"
+create policy "payment_images_public_insert"
 on storage.objects
 for insert
-with check (
-  bucket_id = 'payment-images'
-  and (auth.role() = 'authenticated' or auth.role() = 'service_role')
-);
+with check (bucket_id = 'payment-images');
 
-drop policy if exists "payment_images_auth_update" on storage.objects;
-create policy "payment_images_auth_update"
+create policy "payment_images_public_update"
 on storage.objects
 for update
-using (
-  bucket_id = 'payment-images'
-  and (auth.role() = 'authenticated' or auth.role() = 'service_role')
-)
-with check (
-  bucket_id = 'payment-images'
-  and (auth.role() = 'authenticated' or auth.role() = 'service_role')
-);
+using (bucket_id = 'payment-images')
+with check (bucket_id = 'payment-images');
 
-drop policy if exists "payment_images_auth_delete" on storage.objects;
-create policy "payment_images_auth_delete"
+create policy "payment_images_public_delete"
 on storage.objects
 for delete
-using (
-  bucket_id = 'payment-images'
-  and (auth.role() = 'authenticated' or auth.role() = 'service_role')
-);
+using (bucket_id = 'payment-images');
