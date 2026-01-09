@@ -13,6 +13,7 @@ type BookPurchase = {
   publisher: string | null;
   price: number | null;
   isbn13: string | null;
+  note: string | null;
   created_at: string;
   updated_at: string | null;
 };
@@ -68,6 +69,7 @@ export default function BookSupportPage() {
     publisher: '',
     price: '',
     isbn13: '',
+    note: '',
   });
 
   const fetchPurchases = useCallback(async () => {
@@ -192,6 +194,7 @@ export default function BookSupportPage() {
       publisher: form.publisher.trim() || null,
       price: priceValue || null,
       isbn13: form.isbn13.trim() || null,
+      note: form.note.trim() || null,
       updated_at: new Date().toISOString(),
     };
 
@@ -223,6 +226,7 @@ export default function BookSupportPage() {
       publisher: '',
       price: '',
       isbn13: '',
+      note: '',
     });
     setMonthlyTotal(null);
     setEditingPurchaseId(null);
@@ -240,6 +244,7 @@ export default function BookSupportPage() {
       publisher: purchase.publisher || '',
       price: purchase.price ? String(purchase.price) : '',
       isbn13: purchase.isbn13 || '',
+      note: purchase.note || '',
     });
   };
 
@@ -254,6 +259,7 @@ export default function BookSupportPage() {
       publisher: '',
       price: '',
       isbn13: '',
+      note: '',
     });
     setFormError('');
     setMonthlyTotal(null);
@@ -451,6 +457,16 @@ export default function BookSupportPage() {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-[--gray-700] mb-1">비고</label>
+                <textarea
+                  value={form.note}
+                  onChange={(e) => setForm((prev) => ({ ...prev, note: e.target.value }))}
+                  className="min-h-[88px] w-full px-3 py-2 border border-[--border] rounded-xl bg-white text-sm resize-none"
+                  placeholder="추가 메모가 있다면 입력해주세요."
+                />
+              </div>
+
               {monthlyTotal !== null && (
                 <div className={`rounded-xl px-3 py-2 text-xs ${willExceedLimit ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-[--gray-50] text-[--gray-600] border border-[--border]'}`}>
                   이번 달 합계 {monthlyTotal.toLocaleString()}원 / 100,000원
@@ -578,6 +594,11 @@ export default function BookSupportPage() {
                             <div className="text-xs text-[--gray-500]">
                               {purchase.author || '-'} · {purchase.publisher || '-'}
                             </div>
+                            {purchase.note && (
+                              <div className="text-xs text-[--gray-500] mt-1">
+                                비고: {purchase.note}
+                              </div>
+                            )}
                             {purchase.aladin_url && (
                               <a
                                 href={purchase.aladin_url}

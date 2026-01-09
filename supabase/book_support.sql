@@ -9,6 +9,7 @@ create table if not exists public.book_purchases (
   publisher text,
   price integer,
   isbn13 text,
+  note text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -21,3 +22,6 @@ alter table public.book_purchases
 
 alter table public.book_purchases
   alter column aladin_url drop not null;
+
+alter table public.book_purchases
+  add column if not exists note text;
