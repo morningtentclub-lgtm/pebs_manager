@@ -1378,7 +1378,7 @@ export default function ProjectDetailPage() {
                   <p className="text-center py-12 text-gray-500">지급 내역이 없습니다.</p>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[900px] divide-y divide-gray-200">
+                    <table className="w-full min-w-[980px] divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">수령인</th>
@@ -1387,6 +1387,7 @@ export default function ProjectDetailPage() {
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">공급가액</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">실입금액</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">계좌정보</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">지급완료</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">작업</th>
                         </tr>
                       </thead>
@@ -1417,6 +1418,17 @@ export default function ProjectDetailPage() {
                               {payment.bank_name && payment.account_number
                                 ? `${payment.bank_name} ${payment.account_number}`
                                 : '-'}
+                            </td>
+                            <td className="px-4 py-4 text-sm">
+                              <span
+                                className={`inline-flex items-center px-2.5 py-1 text-[12px] font-semibold rounded-full ${
+                                  payment.payment_status === 'completed'
+                                    ? 'bg-green-50 text-green-700'
+                                    : 'bg-gray-100 text-gray-600'
+                                }`}
+                              >
+                                {payment.payment_status === 'completed' ? '완료' : '대기'}
+                              </span>
                             </td>
                             <td className="px-4 py-4 text-sm">
                               <div className="flex items-center gap-2">

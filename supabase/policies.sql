@@ -6,6 +6,8 @@ alter table public.staff_types enable row level security;
 alter table public.payment_methods enable row level security;
 alter table public.payment_templates enable row level security;
 alter table public.expense_cards enable row level security;
+alter table public.staff_planet_members enable row level security;
+alter table public.staff_planet_projects enable row level security;
 alter table public.book_purchases enable row level security;
 
 -- Projects: authenticated users can read/write
@@ -58,6 +60,22 @@ with check (auth.role() = 'authenticated');
 drop policy if exists "expense_cards_auth_all" on public.expense_cards;
 create policy "expense_cards_auth_all"
 on public.expense_cards
+for all
+using (auth.role() = 'authenticated')
+with check (auth.role() = 'authenticated');
+
+-- Staff planet members: authenticated users can read/write
+drop policy if exists "staff_planet_members_auth_all" on public.staff_planet_members;
+create policy "staff_planet_members_auth_all"
+on public.staff_planet_members
+for all
+using (auth.role() = 'authenticated')
+with check (auth.role() = 'authenticated');
+
+-- Staff planet projects: authenticated users can read/write
+drop policy if exists "staff_planet_projects_auth_all" on public.staff_planet_projects;
+create policy "staff_planet_projects_auth_all"
+on public.staff_planet_projects
 for all
 using (auth.role() = 'authenticated')
 with check (auth.role() = 'authenticated');
