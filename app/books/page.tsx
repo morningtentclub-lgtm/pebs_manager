@@ -357,7 +357,17 @@ export default function BookSupportPage() {
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col gap-2 mb-8">
           <h1 className="text-[32px] font-semibold">도서지원</h1>
-          <p className="text-sm text-[--gray-600]">알라딘 링크를 입력하면 책 정보를 자동으로 채웁니다.</p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[--gray-600]">
+            <span>알라딘 링크를 입력하면 책 정보를 자동으로 채웁니다.</span>
+            <a
+              href="https://www.aladin.co.kr/home/welcome.aspx"
+              target="_blank"
+              rel="noreferrer"
+              className="font-bold italic text-[--gray-700] hover:text-black transition-colors"
+            >
+              → 알라딘 바로가기
+            </a>
+          </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
