@@ -556,14 +556,14 @@ export default function BookSupportPage() {
               <div className="text-sm text-[--gray-500]">등록된 도서 신청이 없습니다.</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-[760px] w-full text-sm">
+                <table className="min-w-[760px] w-full table-fixed text-sm">
                   <thead className="text-xs text-[--gray-500] uppercase border-b border-[--border]">
                     <tr>
-                      <th className="py-2 text-left">구매일</th>
-                      <th className="py-2 text-left">이름</th>
-                      <th className="py-2 text-left">도서 정보</th>
-                      <th className="py-2 text-right">가격</th>
-                      <th className="py-2 text-right">관리</th>
+                      <th className="w-[140px] px-4 py-2 text-left whitespace-nowrap">구매일</th>
+                      <th className="w-[120px] px-4 py-2 text-left whitespace-nowrap">이름</th>
+                      <th className="px-4 py-2 text-left">도서 정보</th>
+                      <th className="w-[120px] px-4 py-2 text-right whitespace-nowrap">가격</th>
+                      <th className="w-[100px] px-4 py-2 text-right whitespace-nowrap">관리</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -575,7 +575,7 @@ export default function BookSupportPage() {
                       if (row.type === 'header') {
                         return (
                           <tr key={row.id} className="bg-[--gray-50]">
-                            <td colSpan={5} className="py-2 text-sm font-semibold text-[--gray-700]">
+                            <td colSpan={5} className="px-4 py-2 text-sm font-semibold text-[--gray-700]">
                               {row.title}
                             </td>
                           </tr>
@@ -584,28 +584,28 @@ export default function BookSupportPage() {
                       if (row.type === 'subtotal') {
                         return (
                           <tr key={row.id} className="bg-white">
-                            <td colSpan={3} className="py-2 text-xs text-[--gray-500]">
+                            <td colSpan={3} className="px-4 py-2 text-xs text-[--gray-500]">
                               {row.label}
                             </td>
-                            <td className="py-2 text-right text-xs font-semibold text-[--gray-700]">
+                            <td className="px-4 py-2 text-right text-xs font-semibold text-[--gray-700]">
                               {row.amount.toLocaleString()}원
                             </td>
-                            <td />
+                            <td className="px-4 py-2" />
                           </tr>
                         );
                       }
                       const purchase = row.purchase;
                       return (
                         <tr key={row.id} className="border-b border-[--border]">
-                          <td className="py-3">{purchase.purchase_date}</td>
-                          <td className="py-3 font-medium">{purchase.requester_name}</td>
-                          <td className="py-3">
-                            <div className="font-medium text-[--foreground]">{purchase.title || '제목 없음'}</div>
-                            <div className="text-xs text-[--gray-500]">
+                          <td className="w-[140px] px-4 py-4 align-top whitespace-nowrap">{purchase.purchase_date}</td>
+                          <td className="w-[120px] px-4 py-4 align-top font-medium whitespace-nowrap">{purchase.requester_name}</td>
+                          <td className="px-4 py-4 align-top overflow-hidden">
+                            <div className="font-medium text-[--foreground] truncate">{purchase.title || '제목 없음'}</div>
+                            <div className="text-xs text-[--gray-500] truncate">
                               {purchase.author || '-'} · {purchase.publisher || '-'}
                             </div>
                             {purchase.note && (
-                              <div className="text-xs text-[--gray-500] mt-1">
+                              <div className="text-xs text-[--gray-500] mt-1 truncate">
                                 비고: {purchase.note}
                               </div>
                             )}
@@ -614,17 +614,17 @@ export default function BookSupportPage() {
                                 href={purchase.aladin_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="text-xs text-[--gray-500] hover:text-[--primary]"
+                                className="text-xs text-[--gray-500] hover:text-[--primary] truncate"
                               >
                                 알라딘 링크
                               </a>
                             )}
                           </td>
-                          <td className="py-3 text-right font-semibold">
+                          <td className="w-[120px] px-4 py-4 align-top text-right font-semibold whitespace-nowrap">
                             {purchase.price ? `${purchase.price.toLocaleString()}원` : '-'}
                           </td>
-                          <td className="py-3 text-right">
-                            <div className="flex items-center justify-end gap-2 text-xs">
+                          <td className="w-[100px] px-4 py-4 align-top text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-2 text-xs whitespace-nowrap">
                               <button
                                 type="button"
                                 onClick={() => handleEdit(purchase)}
