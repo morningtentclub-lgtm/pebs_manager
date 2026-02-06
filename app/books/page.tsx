@@ -597,8 +597,8 @@ export default function BookSupportPage() {
                       const purchase = row.purchase;
                       return (
                         <tr key={row.id} className="border-b border-[--border]">
-                          <td className="w-[140px] px-4 py-4 align-top whitespace-nowrap">{purchase.purchase_date}</td>
-                          <td className="w-[120px] px-4 py-4 align-top font-medium whitespace-nowrap">{purchase.requester_name}</td>
+                          <td className="w-[140px] px-4 py-4 align-middle whitespace-nowrap">{purchase.purchase_date}</td>
+                          <td className="w-[120px] px-4 py-4 align-middle font-medium whitespace-nowrap">{purchase.requester_name}</td>
                           <td className="px-4 py-4 align-top overflow-hidden">
                             <div className="font-medium text-[--foreground] truncate">{purchase.title || '제목 없음'}</div>
                             <div className="text-xs text-[--gray-500] truncate">
@@ -620,10 +620,10 @@ export default function BookSupportPage() {
                               </a>
                             )}
                           </td>
-                          <td className="w-[120px] px-4 py-4 align-top text-right font-semibold whitespace-nowrap">
+                          <td className="w-[120px] px-4 py-4 align-middle text-right font-semibold whitespace-nowrap">
                             {purchase.price ? `${purchase.price.toLocaleString()}원` : '-'}
                           </td>
-                          <td className="w-[100px] px-4 py-4 align-top text-right whitespace-nowrap">
+                          <td className="w-[100px] px-4 py-4 align-middle text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-2 text-xs whitespace-nowrap">
                               <button
                                 type="button"
