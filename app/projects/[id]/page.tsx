@@ -36,6 +36,7 @@ export default function ProjectDetailPage() {
   const [paymentSortMode, setPaymentSortMode] = useState<'updated' | 'method' | 'staff' | 'amount'>('updated');
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [customBankName, setCustomBankName] = useState('');
   const [useCustomBank, setUseCustomBank] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
@@ -932,6 +933,7 @@ export default function ProjectDetailPage() {
       }
 
       setShowExpenseForm(false);
+      setEditingExpenseId(null);
       setNewExpense({
         expense_number: null,
         expense_date: '',
@@ -961,6 +963,73 @@ export default function ProjectDetailPage() {
           ? ' (RLS 정책을 확인해주세요.)'
           : '';
       alert(`지출 내역 생성 실패${message ? `: ${message}` : ''}${helper}`);
+    }
+  };
+
+  const updateExpense = async () => {
+    if (!editingExpenseId) return;
+    try {
+      const { amount } = newExpense;
+      const isCompanyExpense = newExpense.is_company_expense;
+      const payload = {
+        expense_number: newExpense.expense_number,
+        expense_date: newExpense.expense_date || null,
+        amount: amount ? Number(amount) : 0,
+        vendor: newExpense.vendor || null,
+        description: newExpense.description || null,
+        note: newExpense.note || null,
+        is_company_expense: isCompanyExpense,
+        card_id: isCompanyExpense ? newExpense.card_id : null,
+        card_last4: isCompanyExpense ? (newExpense.card_last4 || null) : null,
+        card_alias: isCompanyExpense ? (newExpense.card_alias || null) : null,
+        payer_name: !isCompanyExpense ? (newExpense.payer_name || null) : null,
+        payer_bank_name: !isCompanyExpense ? (newExpense.payer_bank_name || null) : null,
+        payer_account_number: !isCompanyExpense ? (newExpense.payer_account_number || null) : null,
+        payment_status: isCompanyExpense ? 'completed' : newExpense.payment_status,
+      };
+
+      const { error } = await supabase
+        .from('expenses')
+        .update(payload)
+        .eq('id', editingExpenseId);
+
+      if (error) {
+        const detailParts = [error.message, error.details, error.hint, error.code].filter(Boolean);
+        const detail = detailParts.length > 0 ? detailParts.join(' ') : '';
+        throw new Error(detail || '지출 내역 수정 실패');
+      }
+
+      setShowExpenseForm(false);
+      setEditingExpenseId(null);
+      setNewExpense({
+        expense_number: null,
+        expense_date: '',
+        amount: '',
+        vendor: '',
+        description: '',
+        note: '',
+        is_company_expense: true,
+        card_id: null,
+        card_last4: '',
+        card_alias: '',
+        payer_name: '',
+        payer_bank_name: '',
+        payer_account_number: '',
+        payment_status: 'completed',
+      });
+      setSelectedExpenseCardId('');
+      setNewCardLast4('');
+      setNewCardAlias('');
+      fetchData();
+    } catch (error) {
+      console.error('지출 내역 수정 실패:', error);
+      const message = error instanceof Error ? error.message : '';
+      const helper = message.includes('column')
+        ? ' (컬럼 추가 SQL이 적용되었는지 확인해주세요.)'
+        : message.includes('row-level security')
+          ? ' (RLS 정책을 확인해주세요.)'
+          : '';
+      alert(`지출 내역 수정 실패${message ? `: ${message}` : ''}${helper}`);
     }
   };
 
@@ -1163,6 +1232,52 @@ export default function ProjectDetailPage() {
     setShowPaymentForm(true);
   };
 
+  const openExpenseEditForm = (expense: Expense) => {
+    const isCompany = expense.is_company_expense;
+    const hasCard = Boolean(expense.card_id && expenseCards.some((card) => card.id === expense.card_id));
+
+    setEditingExpenseId(expense.id);
+    setNewExpense({
+      expense_number: expense.expense_number ?? null,
+      expense_date: expense.expense_date ?? '',
+      amount: typeof expense.amount === 'number' ? String(expense.amount) : '',
+      vendor: expense.vendor ?? '',
+      description: expense.description ?? '',
+      note: expense.note ?? '',
+      is_company_expense: isCompany,
+      card_id: isCompany && hasCard ? (expense.card_id ?? null) : null,
+      card_last4: isCompany ? (expense.card_last4 ?? '') : '',
+      card_alias: isCompany ? (expense.card_alias ?? '') : '',
+      payer_name: !isCompany ? (expense.payer_name ?? '') : '',
+      payer_bank_name: !isCompany ? (expense.payer_bank_name ?? '') : '',
+      payer_account_number: !isCompany ? (expense.payer_account_number ?? '') : '',
+      payment_status: isCompany ? 'completed' : (expense.payment_status ?? 'pending'),
+    });
+
+    if (isCompany) {
+      if (hasCard && expense.card_id) {
+        setSelectedExpenseCardId(expense.card_id);
+        setNewCardLast4('');
+        setNewCardAlias('');
+      } else if (expense.card_last4 || expense.card_alias) {
+        setSelectedExpenseCardId(NEW_CARD_OPTION);
+        setNewCardLast4(expense.card_last4 ?? '');
+        setNewCardAlias(expense.card_alias ?? '');
+      } else {
+        setSelectedExpenseCardId('');
+        setNewCardLast4('');
+        setNewCardAlias('');
+      }
+    } else {
+      setSelectedExpenseCardId('');
+      setNewCardLast4('');
+      setNewCardAlias('');
+    }
+
+    cancelEditExpenseCard();
+    setShowExpenseForm(true);
+  };
+
   const deletePayment = async (paymentId: string) => {
     if (!confirm('정말 삭제하시겠습니까?')) return;
 
@@ -1327,7 +1442,7 @@ export default function ProjectDetailPage() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
-                  지출 내역서 ({expenses.length})
+                  지출 내역 ({expenses.length})
                 </span>
               </button>
             </nav>
@@ -1458,9 +1573,10 @@ export default function ProjectDetailPage() {
             {activeTab === 'expenses' && (
               <div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-                  <h2 className="text-[20px] font-bold text-gray-900">지출 내역서</h2>
+                  <h2 className="text-[20px] font-bold text-gray-900">지출 내역</h2>
                   <button
                     onClick={() => {
+                      setEditingExpenseId(null);
                       setNewExpense({
                         expense_number: null,
                         expense_date: '',
@@ -1561,12 +1677,20 @@ export default function ProjectDetailPage() {
                                 : (expense.payment_status === 'completed' ? '완료' : '대기')}
                             </td>
                             <td className="px-4 py-4 text-sm">
-                              <button
-                                onClick={() => deleteExpense(expense.id)}
-                                className="px-3 py-1.5 text-[13px] font-semibold text-red-600 bg-white border border-red-200 rounded hover:bg-red-50 transition-colors"
-                              >
-                                삭제
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => openExpenseEditForm(expense)}
+                                  className="px-3 py-1.5 text-[13px] font-semibold text-[--primary] bg-white border border-[--border] rounded hover:border-[--primary] transition-colors"
+                                >
+                                  수정
+                                </button>
+                                <button
+                                  onClick={() => deleteExpense(expense.id)}
+                                  className="px-3 py-1.5 text-[13px] font-semibold text-red-600 bg-white border border-red-200 rounded hover:bg-red-50 transition-colors"
+                                >
+                                  삭제
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -2057,7 +2181,9 @@ export default function ProjectDetailPage() {
       {showExpenseForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white text-[--foreground] rounded-2xl border border-[--border] shadow-xl max-w-2xl w-full p-6 sm:p-8">
-            <h2 className="text-xl font-semibold text-[--foreground] mb-4">지출 항목 추가</h2>
+            <h2 className="text-xl font-semibold text-[--foreground] mb-4">
+              {editingExpenseId ? '지출 항목 수정' : '지출 항목 추가'}
+            </h2>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-[--gray-700] mb-1">날짜</label>
@@ -2345,6 +2471,7 @@ export default function ProjectDetailPage() {
               <button
                 onClick={() => {
                   setShowExpenseForm(false);
+                  setEditingExpenseId(null);
                   setSelectedExpenseCardId('');
                   setNewCardLast4('');
                   setNewCardAlias('');
@@ -2355,10 +2482,10 @@ export default function ProjectDetailPage() {
                 취소
               </button>
               <button
-                onClick={createExpense}
+                onClick={editingExpenseId ? updateExpense : createExpense}
                 className="btn-primary flex-1 px-4 py-2 rounded-xl text-sm"
               >
-                추가
+                {editingExpenseId ? '수정' : '추가'}
               </button>
             </div>
           </div>
