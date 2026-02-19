@@ -79,3 +79,25 @@ export interface ExpenseCard {
   card_alias: string;
   created_at: string;
 }
+
+export interface HddSet {
+  id: string;
+  name: string;                     // "25 레이드"
+  description: string | null;
+  last_scanned_at: string | null;   // ISO 8601 timestamptz
+  file_count: number;
+  created_at: string;
+}
+
+export interface HddFileEntry {
+  id: string;
+  hdd_set_id: string;
+  name: string;                     // "footage" or "A001_C001.mov"
+  path: string;                     // "/2024 LG AI캠프/footage"
+  parent_path: string;              // "" = 루트, "/2024 LG AI캠프" = 하위
+  is_dir: boolean;
+  size_bytes: number | null;        // 폴더는 null
+  modified_at: string | null;
+  extension: string | null;         // "mov", "mp4", 폴더는 null
+  created_at: string;
+}

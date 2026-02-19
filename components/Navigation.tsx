@@ -63,6 +63,16 @@ export default function Navigation() {
             >
               도서지원
             </Link>
+            <Link
+              href="/hdd-library"
+              className={`text-[15px] font-semibold transition-colors ${
+                isActive('/hdd-library')
+                  ? 'text-black'
+                  : 'text-gray-500 hover:text-black'
+              }`}
+            >
+              HDD 라이브러리
+            </Link>
           </div>
 
           {/* Right Section */}

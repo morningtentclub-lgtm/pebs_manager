@@ -88,6 +88,22 @@ for all
 using (auth.role() = 'authenticated')
 with check (auth.role() = 'authenticated');
 
+-- HDD 라이브러리: 읽기 전용 (쓰기는 스캐너가 service_role 키로 직접 처리)
+alter table public.hdd_sets enable row level security;
+alter table public.hdd_file_index enable row level security;
+
+drop policy if exists "hdd_sets_auth_select" on public.hdd_sets;
+create policy "hdd_sets_auth_select"
+on public.hdd_sets
+for select
+using (auth.role() = 'authenticated');
+
+drop policy if exists "hdd_file_index_auth_select" on public.hdd_file_index;
+create policy "hdd_file_index_auth_select"
+on public.hdd_file_index
+for select
+using (auth.role() = 'authenticated');
+
 -- Storage: public access for payment-images bucket
 drop policy if exists "payment_images_auth_select" on storage.objects;
 drop policy if exists "payment_images_auth_insert" on storage.objects;
