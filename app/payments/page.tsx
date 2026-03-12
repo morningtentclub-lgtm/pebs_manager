@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { Expense, Payment, PaymentMethod, Project, StaffType } from '@/lib/types';
@@ -34,6 +34,179 @@ const normalizePaymentStatus = (value: string | null) => {
   }
   return 'pending';
 };
+
+const formatDateFieldValue = (value: string) => {
+  const [year, month, day] = value.split('-');
+  if (!year || !month || !day) return value;
+  return `${year.slice(-2)}.${month}.${day}`;
+};
+
+const parseManualDateValue = (value: string) => {
+  const digits = value.replace(/[^0-9]/g, '');
+  if (digits.length !== 6 && digits.length !== 8) return null;
+
+  const normalized = digits.length === 6 ? `20${digits}` : digits;
+  const year = Number(normalized.slice(0, 4));
+  const month = Number(normalized.slice(4, 6));
+  const day = Number(normalized.slice(6, 8));
+
+  if (!year || month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  const parsed = new Date(year, month - 1, day);
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${normalized.slice(0, 4)}-${normalized.slice(4, 6)}-${normalized.slice(6, 8)}`;
+};
+
+function InlineDateField({
+  id,
+  value,
+  emptyLabel,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  emptyLabel: string;
+  onChange: (nextValue: string | null) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [manualValue, setManualValue] = useState(value);
+
+  const openPicker = () => {
+    const input = inputRef.current;
+    if (!input) return;
+    const pickerInput = input as HTMLInputElement & { showPicker?: () => void };
+
+    input.focus({ preventScroll: true });
+
+    if (pickerInput.showPicker) {
+      try {
+        pickerInput.showPicker();
+        return;
+      } catch {
+        // Fallback for browsers that block showPicker on some interactions.
+      }
+    }
+
+    input.click();
+  };
+
+  const clearClickTimer = () => {
+    if (!clickTimerRef.current) return;
+    clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = null;
+  };
+
+  const handleSingleClick = () => {
+    clearClickTimer();
+    clickTimerRef.current = setTimeout(() => {
+      openPicker();
+      clickTimerRef.current = null;
+    }, 180);
+  };
+
+  const handleDoubleClick = () => {
+    clearClickTimer();
+    setManualValue(value);
+    setIsEditing(true);
+  };
+
+  const submitManualValue = () => {
+    const nextValue = manualValue.trim();
+
+    if (!nextValue) {
+      onChange(null);
+      setIsEditing(false);
+      return;
+    }
+
+    const parsed = parseManualDateValue(nextValue);
+    if (parsed) {
+      onChange(parsed);
+      setIsEditing(false);
+      return;
+    }
+
+    setManualValue(value);
+    setIsEditing(false);
+  };
+
+  if (isEditing) {
+    return (
+      <div className="w-[150px]">
+        <input
+          autoFocus
+          type="text"
+          inputMode="numeric"
+          value={manualValue}
+          onChange={(e) => setManualValue(e.target.value)}
+          onBlur={submitManualValue}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              submitManualValue();
+            }
+            if (e.key === 'Escape') {
+              setManualValue(value);
+              setIsEditing(false);
+            }
+          }}
+          placeholder="YYMMDD"
+          className="h-8 w-full rounded-md border border-gray-200 bg-white px-2.5 text-[12px] text-gray-900 placeholder:text-[11px] placeholder:text-gray-400 focus:border-black"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative w-[150px]">
+      <input
+        ref={inputRef}
+        id={id}
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value ? e.target.value : null)}
+        className="pointer-events-none absolute inset-0 opacity-0"
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+      <button
+        type="button"
+        onClick={handleSingleClick}
+        onDoubleClick={handleDoubleClick}
+        className="flex h-8 w-full items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-2.5 text-left transition-colors hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-black"
+      >
+        <span
+          className={`min-w-0 truncate whitespace-nowrap text-[12px] leading-none ${
+            value ? 'text-gray-900' : 'text-gray-400'
+          }`}
+        >
+          {value ? formatDateFieldValue(value) : emptyLabel}
+        </span>
+        <svg
+          className="h-4 w-4 flex-shrink-0 text-gray-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.7}
+            d="M8 7V3m8 4V3m-9 8h10m-11 9h12a2 2 0 002-2V7a2 2 0 00-2-2H6a2 2 0 00-2 2v11a2 2 0 002 2z"
+          />
+        </svg>
+      </button>
+    </div>
+  );
+}
 
 export default function PaymentListPage() {
   const [payments, setPayments] = useState<PaymentListItem[]>([]);
@@ -524,10 +697,10 @@ export default function PaymentListPage() {
                             <col className="w-[9%]" />
                             <col className="w-[9%]" />
                             <col className="w-[9%]" />
-                            <col className="w-[14%]" />
-                            <col className="w-[9%]" />
-                            <col className="w-[9%]" />
-                            <col className="w-[8%]" />
+                            <col className="w-[12%]" />
+                            <col className="w-[150px]" />
+                            <col className="w-[150px]" />
+                            <col className="w-[72px]" />
                           </colgroup>
                           <thead className="bg-gray-50">
                             <tr>
@@ -538,8 +711,8 @@ export default function PaymentListPage() {
                               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">공급가액</th>
                               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">실입금액</th>
                               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">계좌정보</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">세금계산서 발행일</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">지급일</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">세금계산서 발행일</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">지급일</th>
                               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap text-center">완료</th>
                             </tr>
                           </thead>
@@ -603,33 +776,20 @@ export default function PaymentListPage() {
                                   </td>
                                   <td className="px-3 py-3 text-sm text-gray-900">
                                     {isInvoice ? (
-                                      <div>
-                                        <div className="relative">
-                                          <input
-                                            id={`invoice-${payment.id}`}
-                                            type="date"
-                                            className={`w-full rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-[#1D32FB] focus:outline-none ${
-                                              invoiceValue ? 'text-gray-900' : 'text-transparent'
-                                            }`}
-                                            value={invoiceValue}
-                                            onChange={(e) =>
-                                              updatePaymentDates(payment, {
-                                                invoice_date: e.target.value ? e.target.value : null,
-                                              })
-                                            }
-                                          />
-                                          {!invoiceValue && (
-                                            <label
-                                              htmlFor={`invoice-${payment.id}`}
-                                              className="absolute inset-0 flex items-center px-2 text-xs text-gray-400 cursor-pointer"
-                                            >
-                                              입력
-                                            </label>
-                                          )}
-                                        </div>
+                                      <div className="w-[150px]">
+                                        <InlineDateField
+                                          id={`invoice-${payment.id}`}
+                                          value={invoiceValue}
+                                          emptyLabel="발행일 선택"
+                                          onChange={(nextValue) =>
+                                            updatePaymentDates(payment, {
+                                              invoice_date: nextValue,
+                                            })
+                                          }
+                                        />
                                         <button
                                           type="button"
-                                          className="mt-1 text-xs text-gray-400 hover:text-gray-600"
+                                          className="mt-1 block w-full pl-2.5 text-left text-xs text-gray-400 hover:text-gray-600"
                                           onClick={() => {
                                             if (confirm('세금계산서 발행일을 초기화할까요?')) {
                                               updatePaymentDates(payment, { invoice_date: null });
@@ -649,33 +809,20 @@ export default function PaymentListPage() {
                                   </td>
                                   <td className="px-3 py-3 text-sm text-gray-900">
                                     {payment.source === 'payment' || payment.source === 'expense' ? (
-                                      <div>
-                                        <div className="relative">
-                                          <input
-                                            id={`payment-${payment.id}`}
-                                            type="date"
-                                            className={`w-full rounded-md border border-gray-200 px-2 py-1 text-sm focus:border-[#1D32FB] focus:outline-none ${
-                                              paymentValue ? 'text-gray-900' : 'text-transparent'
-                                            }`}
-                                            value={paymentValue}
-                                            onChange={(e) =>
-                                              updatePaymentDates(payment, {
-                                                payment_date: e.target.value ? e.target.value : null,
-                                              })
-                                            }
-                                          />
-                                          {!paymentValue && (
-                                            <label
-                                              htmlFor={`payment-${payment.id}`}
-                                              className="absolute inset-0 flex items-center px-2 text-xs text-gray-400 cursor-pointer"
-                                            >
-                                              입력
-                                            </label>
-                                          )}
-                                        </div>
+                                      <div className="w-[150px]">
+                                        <InlineDateField
+                                          id={`payment-${payment.id}`}
+                                          value={paymentValue}
+                                          emptyLabel="지급일 선택"
+                                          onChange={(nextValue) =>
+                                            updatePaymentDates(payment, {
+                                              payment_date: nextValue,
+                                            })
+                                          }
+                                        />
                                         <button
                                           type="button"
-                                          className="mt-1 text-xs text-gray-400 hover:text-gray-600"
+                                          className="mt-1 block w-full pl-2.5 text-left text-xs text-gray-400 hover:text-gray-600"
                                           onClick={() => {
                                             if (confirm('지급일을 초기화할까요?')) {
                                               updatePaymentDates(payment, {
