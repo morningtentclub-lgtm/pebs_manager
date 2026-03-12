@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Expense, Payment, PaymentMethod, Project, StaffType } from '@/lib/types';
+import { Payment, PaymentMethod, Project, StaffType } from '@/lib/types';
+import InlineDateField from '@/components/InlineDateField';
+import StatusToggle from '@/components/StatusToggle';
 
 type SortMode = 'project' | 'recipient' | 'updated' | 'staff' | 'method';
 type ViewStatus = 'pending' | 'completed';
@@ -35,179 +37,6 @@ const normalizePaymentStatus = (value: string | null) => {
   return 'pending';
 };
 
-const formatDateFieldValue = (value: string) => {
-  const [year, month, day] = value.split('-');
-  if (!year || !month || !day) return value;
-  return `${year.slice(-2)}.${month}.${day}`;
-};
-
-const parseManualDateValue = (value: string) => {
-  const digits = value.replace(/[^0-9]/g, '');
-  if (digits.length !== 6 && digits.length !== 8) return null;
-
-  const normalized = digits.length === 6 ? `20${digits}` : digits;
-  const year = Number(normalized.slice(0, 4));
-  const month = Number(normalized.slice(4, 6));
-  const day = Number(normalized.slice(6, 8));
-
-  if (!year || month < 1 || month > 12 || day < 1 || day > 31) return null;
-
-  const parsed = new Date(year, month - 1, day);
-  if (
-    parsed.getFullYear() !== year ||
-    parsed.getMonth() !== month - 1 ||
-    parsed.getDate() !== day
-  ) {
-    return null;
-  }
-
-  return `${normalized.slice(0, 4)}-${normalized.slice(4, 6)}-${normalized.slice(6, 8)}`;
-};
-
-function InlineDateField({
-  id,
-  value,
-  emptyLabel,
-  onChange,
-}: {
-  id: string;
-  value: string;
-  emptyLabel: string;
-  onChange: (nextValue: string | null) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [manualValue, setManualValue] = useState(value);
-
-  const openPicker = () => {
-    const input = inputRef.current;
-    if (!input) return;
-    const pickerInput = input as HTMLInputElement & { showPicker?: () => void };
-
-    input.focus({ preventScroll: true });
-
-    if (pickerInput.showPicker) {
-      try {
-        pickerInput.showPicker();
-        return;
-      } catch {
-        // Fallback for browsers that block showPicker on some interactions.
-      }
-    }
-
-    input.click();
-  };
-
-  const clearClickTimer = () => {
-    if (!clickTimerRef.current) return;
-    clearTimeout(clickTimerRef.current);
-    clickTimerRef.current = null;
-  };
-
-  const handleSingleClick = () => {
-    clearClickTimer();
-    clickTimerRef.current = setTimeout(() => {
-      openPicker();
-      clickTimerRef.current = null;
-    }, 180);
-  };
-
-  const handleDoubleClick = () => {
-    clearClickTimer();
-    setManualValue(value);
-    setIsEditing(true);
-  };
-
-  const submitManualValue = () => {
-    const nextValue = manualValue.trim();
-
-    if (!nextValue) {
-      onChange(null);
-      setIsEditing(false);
-      return;
-    }
-
-    const parsed = parseManualDateValue(nextValue);
-    if (parsed) {
-      onChange(parsed);
-      setIsEditing(false);
-      return;
-    }
-
-    setManualValue(value);
-    setIsEditing(false);
-  };
-
-  if (isEditing) {
-    return (
-      <div className="w-[150px]">
-        <input
-          autoFocus
-          type="text"
-          inputMode="numeric"
-          value={manualValue}
-          onChange={(e) => setManualValue(e.target.value)}
-          onBlur={submitManualValue}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              submitManualValue();
-            }
-            if (e.key === 'Escape') {
-              setManualValue(value);
-              setIsEditing(false);
-            }
-          }}
-          placeholder="YYMMDD"
-          className="h-8 w-full rounded-md border border-gray-200 bg-white px-2.5 text-[12px] text-gray-900 placeholder:text-[11px] placeholder:text-gray-400 focus:border-black"
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative w-[150px]">
-      <input
-        ref={inputRef}
-        id={id}
-        type="date"
-        value={value}
-        onChange={(e) => onChange(e.target.value ? e.target.value : null)}
-        className="pointer-events-none absolute inset-0 opacity-0"
-        tabIndex={-1}
-        aria-hidden="true"
-      />
-      <button
-        type="button"
-        onClick={handleSingleClick}
-        onDoubleClick={handleDoubleClick}
-        className="flex h-8 w-full items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-2.5 text-left transition-colors hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-black"
-      >
-        <span
-          className={`min-w-0 truncate whitespace-nowrap text-[12px] leading-none ${
-            value ? 'text-gray-900' : 'text-gray-400'
-          }`}
-        >
-          {value ? formatDateFieldValue(value) : emptyLabel}
-        </span>
-        <svg
-          className="h-4 w-4 flex-shrink-0 text-gray-400"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.7}
-            d="M8 7V3m8 4V3m-9 8h10m-11 9h12a2 2 0 002-2V7a2 2 0 00-2-2H6a2 2 0 00-2 2v11a2 2 0 002 2z"
-          />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
 export default function PaymentListPage() {
   const [payments, setPayments] = useState<PaymentListItem[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -219,6 +48,7 @@ export default function PaymentListPage() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('project');
   const [viewStatus, setViewStatus] = useState<ViewStatus>('pending');
+  const [stickyVisibleIds, setStickyVisibleIds] = useState<string[]>([]);
   const fetchAll = useCallback(async (silent?: boolean) => {
     if (silent) {
       setRefreshing(true);
@@ -319,6 +149,7 @@ export default function PaymentListPage() {
       setStaffTypes(staffData || []);
       setPaymentMethods(methodData || []);
       setLastUpdatedAt(new Date().toISOString());
+      setStickyVisibleIds([]);
     } catch (error) {
       console.error('지급 내역 리스트 불러오기 실패:', error);
       const errorObject = (error && typeof error === 'object') ? (error as { message?: string; details?: string; hint?: string; code?: string }) : {};
@@ -348,6 +179,10 @@ export default function PaymentListPage() {
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  useEffect(() => {
+    setStickyVisibleIds([]);
+  }, [viewStatus]);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -386,7 +221,7 @@ export default function PaymentListPage() {
   };
 
 
-  const buildGroups = (items: PaymentListItem[]) => {
+  const buildGroups = useCallback((items: PaymentListItem[]) => {
     const groups = new Map<string, PaymentListItem[]>();
     const getKey = (payment: PaymentListItem) => {
       switch (sortMode) {
@@ -437,14 +272,22 @@ export default function PaymentListPage() {
     }
 
     return sortedGroups;
-  };
+  }, [methodMap, projectMap, projectOrderMap, sortMode, staffMap]);
 
   const pendingPayments = payments.filter((payment) => payment.payment_status !== 'completed');
   const completedPayments = payments.filter((payment) => payment.payment_status === 'completed');
-  const activePayments = viewStatus === 'completed' ? completedPayments : pendingPayments;
+  const activePayments = useMemo(() => {
+    const baseList = viewStatus === 'completed' ? completedPayments : pendingPayments;
+    const stickyItems = payments.filter(
+      (payment) =>
+        stickyVisibleIds.includes(payment.id) &&
+        !baseList.some((item) => item.id === payment.id)
+    );
+    return [...baseList, ...stickyItems];
+  }, [completedPayments, payments, pendingPayments, stickyVisibleIds, viewStatus]);
   const activeGroups = useMemo(
     () => buildGroups(activePayments),
-    [activePayments, sortMode, staffMap, methodMap, projectMap, projectOrderMap]
+    [activePayments, buildGroups]
   );
 
   const normalizeDateValue = (value: string | null | undefined) => {
@@ -497,6 +340,7 @@ export default function PaymentListPage() {
 
   const togglePaymentStatus = async (payment: PaymentListItem, nextStatus: 'pending' | 'completed') => {
     try {
+      setStickyVisibleIds((prev) => (prev.includes(payment.id) ? prev : [...prev, payment.id]));
       if (payment.source === 'expense') {
         const { error } = await supabase
           .from('expenses')
@@ -535,6 +379,7 @@ export default function PaymentListPage() {
         )
       );
     } catch (error) {
+      setStickyVisibleIds((prev) => prev.filter((id) => id !== payment.id));
       console.error('지급 상태 업데이트 실패:', error);
       alert('지급 상태 업데이트에 실패했습니다.');
     }
@@ -704,16 +549,16 @@ export default function PaymentListPage() {
                           </colgroup>
                           <thead className="bg-gray-50">
                             <tr>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">프로젝트</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">수령인</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">항목</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">지급방식</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">공급가액</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">실입금액</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">계좌정보</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">세금계산서 발행일</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">지급일</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap text-center">완료</th>
+                              <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">프로젝트</th>
+                              <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">수령인</th>
+                              <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">항목</th>
+                              <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">지급방식</th>
+                              <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">공급가액</th>
+                              <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">실입금액</th>
+                              <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">계좌정보</th>
+                              <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase whitespace-nowrap">세금계산서 발행일</th>
+                              <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase whitespace-nowrap">지급일</th>
+                              <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase whitespace-nowrap text-center">지급상태</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
@@ -726,28 +571,28 @@ export default function PaymentListPage() {
                               const paymentValue = normalizeDateValue(payment.payment_date);
                               return (
                                 <tr key={payment.id}>
-                                  <td className="px-3 py-3 text-sm text-gray-900">
+                                  <td className="px-3 py-3 text-[13px] text-gray-900">
                                     {projectMap.get(payment.project_id) || '-'}
                                   </td>
-                                  <td className="px-3 py-3 text-sm text-gray-900">
+                                  <td className="px-3 py-3 text-[13px] text-gray-900">
                                     <div>{payment.recipient || '-'}</div>
                                     {payment.company_name && (
-                                      <div className="text-xs text-gray-500">{payment.company_name}</div>
+                                      <div className="text-[11px] text-gray-500">{payment.company_name}</div>
                                     )}
                                   </td>
-                                  <td className="px-3 py-3 text-sm text-gray-900">
+                                  <td className="px-3 py-3 text-[13px] text-gray-900">
                                     {resolveStaffLabel(payment)}
                                   </td>
-                                  <td className="px-3 py-3 text-sm text-gray-900">
+                                  <td className="px-3 py-3 text-[13px] text-gray-900">
                                     {methodName || '-'}
                                   </td>
-                                  <td className="px-3 py-3 text-sm font-semibold text-gray-900">
+                                  <td className="px-3 py-3 text-[13px] font-semibold text-gray-900 whitespace-nowrap">
                                     {payment.amount.toLocaleString()}원
                                   </td>
-                                  <td className="px-3 py-3 text-sm font-semibold text-gray-900">
+                                  <td className="px-3 py-3 text-[13px] font-semibold text-gray-900 whitespace-nowrap">
                                     {payment.source === 'expense' ? '-' : `${getActualAmount(payment).toLocaleString()}원`}
                                   </td>
-                                  <td className="px-3 py-3 text-sm text-gray-700">
+                                  <td className="px-3 py-3 text-[13px] text-gray-700">
                                     {(() => {
                                       const accountNumber = payment.account_number || '';
                                       const bankName = payment.bank_name || '';
@@ -766,7 +611,7 @@ export default function PaymentListPage() {
                                         <div className={`flex h-full flex-col ${isSingleLine ? 'justify-center' : ''}`}>
                                           {hasAccount && <div>{accountLabel}</div>}
                                           {hasResident && (
-                                            <div className="text-xs text-gray-400">
+                                            <div className="text-[11px] text-gray-400">
                                               주민 {residentLabel}
                                             </div>
                                           )}
@@ -774,13 +619,14 @@ export default function PaymentListPage() {
                                       );
                                     })()}
                                   </td>
-                                  <td className="px-3 py-3 text-sm text-gray-900">
+                                  <td className="px-3 py-3 text-[13px] text-gray-900">
                                     {isInvoice ? (
-                                      <div className="w-[150px]">
+                                      <div className="w-[138px]">
                                         <InlineDateField
                                           id={`invoice-${payment.id}`}
                                           value={invoiceValue}
                                           emptyLabel="발행일 선택"
+                                          className="w-[138px]"
                                           onChange={(nextValue) =>
                                             updatePaymentDates(payment, {
                                               invoice_date: nextValue,
@@ -789,7 +635,7 @@ export default function PaymentListPage() {
                                         />
                                         <button
                                           type="button"
-                                          className="mt-1 block w-full pl-2.5 text-left text-xs text-gray-400 hover:text-gray-600"
+                                          className="mt-1 block w-full pl-2 text-left text-[11px] text-gray-400 hover:text-gray-600"
                                           onClick={() => {
                                             if (confirm('세금계산서 발행일을 초기화할까요?')) {
                                               updatePaymentDates(payment, { invoice_date: null });
@@ -807,13 +653,14 @@ export default function PaymentListPage() {
                                       <span className="text-gray-400">-</span>
                                     )}
                                   </td>
-                                  <td className="px-3 py-3 text-sm text-gray-900">
+                                  <td className="px-3 py-3 text-[13px] text-gray-900">
                                     {payment.source === 'payment' || payment.source === 'expense' ? (
-                                      <div className="w-[150px]">
+                                      <div className="w-[138px]">
                                         <InlineDateField
                                           id={`payment-${payment.id}`}
                                           value={paymentValue}
                                           emptyLabel="지급일 선택"
+                                          className="w-[138px]"
                                           onChange={(nextValue) =>
                                             updatePaymentDates(payment, {
                                               payment_date: nextValue,
@@ -822,7 +669,7 @@ export default function PaymentListPage() {
                                         />
                                         <button
                                           type="button"
-                                          className="mt-1 block w-full pl-2.5 text-left text-xs text-gray-400 hover:text-gray-600"
+                                          className="mt-1 block w-full pl-2 text-left text-[11px] text-gray-400 hover:text-gray-600"
                                           onClick={() => {
                                             if (confirm('지급일을 초기화할까요?')) {
                                               updatePaymentDates(payment, {
@@ -838,11 +685,11 @@ export default function PaymentListPage() {
                                       <span className="text-gray-400">-</span>
                                     )}
                                   </td>
-                                  <td className="px-3 py-3 text-sm text-gray-900 text-center whitespace-nowrap">
-                                    <input
-                                      type="checkbox"
-                                      checked={payment.payment_status === 'completed'}
-                                      onChange={(e) => togglePaymentStatus(payment, e.target.checked ? 'completed' : 'pending')}
+                                  <td className="px-3 py-3 text-[13px] text-gray-900 text-center whitespace-nowrap">
+                                    <StatusToggle
+                                      value={payment.payment_status === 'completed' ? 'completed' : 'pending'}
+                                      onChange={(nextStatus) => togglePaymentStatus(payment, nextStatus)}
+                                      className="justify-center"
                                     />
                                   </td>
                                 </tr>

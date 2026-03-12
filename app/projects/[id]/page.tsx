@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase';
 import { Project, Payment, Expense, ExpenseCard, StaffType, PaymentMethod } from '@/lib/types';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
+import InlineDateField from '@/components/InlineDateField';
+import StatusToggle from '@/components/StatusToggle';
 
 export default function ProjectDetailPage() {
   const params = useParams();
@@ -687,6 +689,11 @@ export default function ProjectDetailPage() {
     return payment.amount || 0;
   };
 
+  const normalizeDateValue = (value: string | null | undefined) => {
+    if (!value) return '';
+    return value.includes('T') ? value.slice(0, 10) : value;
+  };
+
   const getStaffLabel = (payment: Payment) => {
     const staffName = payment.staff_type_id
       ? staffTypeById.get(payment.staff_type_id) || ''
@@ -747,6 +754,75 @@ export default function ProjectDetailPage() {
 
     return list;
   }, [payments, paymentSortMode, paymentMethodById, staffTypeById]);
+
+  const updatePaymentDates = async (
+    payment: Payment,
+    updates: { invoice_date?: string | null; payment_date?: string | null }
+  ) => {
+    try {
+      const timestamp = new Date().toISOString();
+      const { error } = await supabase
+        .from('payments')
+        .update({
+          ...updates,
+          updated_at: timestamp,
+        })
+        .eq('id', payment.id);
+
+      if (error) throw error;
+
+      setPayments((prev) =>
+        prev.map((item) =>
+          item.id === payment.id
+            ? { ...item, ...updates, updated_at: timestamp }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error('프로젝트 지급 날짜 업데이트 실패:', error);
+      alert('지급 날짜 업데이트에 실패했습니다.');
+    }
+  };
+
+  const togglePaymentStatus = async (payment: Payment, nextStatus: 'pending' | 'completed') => {
+    try {
+      const timestamp = new Date().toISOString();
+      const updates: { payment_status: 'pending' | 'completed'; payment_date?: string; updated_at: string } = {
+        payment_status: nextStatus,
+        updated_at: timestamp,
+      };
+
+      if (nextStatus === 'completed' && !payment.payment_date) {
+        updates.payment_date = new Date().toISOString().slice(0, 10);
+      }
+
+      const { error } = await supabase
+        .from('payments')
+        .update(updates)
+        .eq('id', payment.id);
+
+      if (error) throw error;
+
+      setPayments((prev) =>
+        prev.map((item) =>
+          item.id === payment.id
+            ? {
+                ...item,
+                payment_status: nextStatus,
+                payment_date:
+                  nextStatus === 'completed' && !item.payment_date
+                    ? new Date().toISOString().slice(0, 10)
+                    : item.payment_date,
+                updated_at: timestamp,
+              }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error('프로젝트 지급 상태 업데이트 실패:', error);
+      alert('지급 상태 업데이트에 실패했습니다.');
+    }
+  };
 
   const handleOcrRecognition = async () => {
     if (ocrFiles.length === 0) {
@@ -1493,76 +1569,135 @@ export default function ProjectDetailPage() {
                   <p className="text-center py-12 text-gray-500">지급 내역이 없습니다.</p>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[980px] divide-y divide-gray-200">
+                    <table className="w-full min-w-[1220px] divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">수령인</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">항목</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">지급방식</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">공급가액</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">실입금액</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">계좌정보</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">지급완료</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">작업</th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">수령인</th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">항목</th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">지급방식</th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">공급가액</th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">실입금액</th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">계좌정보</th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase whitespace-nowrap">세금계산서 발행일</th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase whitespace-nowrap">지급일</th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">지급상태</th>
+                          <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase">작업</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {sortedPayments.map((payment) => (
-                          <tr key={payment.id}>
-                            <td className="px-4 py-4 text-sm text-gray-900">
-                              <div>{payment.recipient || '-'}</div>
-                              {payment.company_name && (
-                                <div className="text-xs text-gray-500">{payment.company_name}</div>
-                              )}
-                            </td>
-                            <td className="px-4 py-4 text-sm text-gray-900">
-                              {getStaffLabel(payment)}
-                            </td>
-                            <td className="px-4 py-4 text-sm text-gray-900">
-                              {payment.payment_method_id
-                                ? paymentMethodById.get(payment.payment_method_id) || '-'
-                                : '-'}
-                            </td>
-                            <td className="px-4 py-4 text-sm font-semibold text-gray-900">
-                              {payment.amount.toLocaleString()}원
-                            </td>
-                            <td className="px-4 py-4 text-sm font-semibold text-gray-900">
-                              {getActualAmount(payment).toLocaleString()}원
-                            </td>
-                            <td className="px-4 py-4 text-sm text-gray-900">
-                              {payment.bank_name && payment.account_number
-                                ? `${payment.bank_name} ${payment.account_number}`
-                                : '-'}
-                            </td>
-                            <td className="px-4 py-4 text-sm">
-                              <span
-                                className={`inline-flex items-center px-2.5 py-1 text-[12px] font-semibold rounded-full ${
-                                  payment.payment_status === 'completed'
-                                    ? 'bg-green-50 text-green-700'
-                                    : 'bg-gray-100 text-gray-600'
-                                }`}
-                              >
-                                {payment.payment_status === 'completed' ? '완료' : '대기'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-4 text-sm">
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => openPaymentEditForm(payment)}
-                                  className="px-3 py-1.5 text-[13px] font-semibold text-gray-700 bg-white border border-gray-200 rounded hover:border-black transition-colors"
-                                >
-                                  수정
-                                </button>
-                                <button
-                                  onClick={() => deletePayment(payment.id)}
-                                  className="px-3 py-1.5 text-[13px] font-semibold text-red-600 bg-white border border-red-200 rounded hover:bg-red-50 transition-colors"
-                                >
-                                  삭제
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                        {sortedPayments.map((payment) => {
+                          const methodName = payment.payment_method_id
+                            ? paymentMethodById.get(payment.payment_method_id) || ''
+                            : '';
+                          const isInvoice = methodName === '세금계산서';
+                          const isWithholding = methodName === '원천징수';
+                          const invoiceValue = normalizeDateValue(payment.invoice_date);
+                          const paymentValue = normalizeDateValue(payment.payment_date);
+
+                          return (
+                            <tr key={payment.id}>
+                              <td className="px-3 py-3 text-[13px] text-gray-900">
+                                <div>{payment.recipient || '-'}</div>
+                                {payment.company_name && (
+                                  <div className="text-[11px] text-gray-500">{payment.company_name}</div>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 text-[13px] text-gray-900">
+                                {getStaffLabel(payment)}
+                              </td>
+                              <td className="px-3 py-3 text-[13px] text-gray-900">
+                                {methodName || '-'}
+                              </td>
+                              <td className="px-3 py-3 text-[13px] font-semibold text-gray-900 whitespace-nowrap">
+                                {payment.amount.toLocaleString()}원
+                              </td>
+                              <td className="px-3 py-3 text-[13px] font-semibold text-gray-900 whitespace-nowrap">
+                                {getActualAmount(payment).toLocaleString()}원
+                              </td>
+                              <td className="px-3 py-3 text-[13px] text-gray-900">
+                                {payment.bank_name && payment.account_number
+                                  ? `${payment.bank_name} ${payment.account_number}`
+                                  : '-'}
+                              </td>
+                              <td className="px-3 py-3 text-[13px] text-gray-900">
+                                {isInvoice ? (
+                                  <div className="w-[138px]">
+                                    <InlineDateField
+                                      id={`project-invoice-${payment.id}`}
+                                      value={invoiceValue}
+                                      emptyLabel="발행일 선택"
+                                      className="w-[138px]"
+                                      onChange={(nextValue) =>
+                                        updatePaymentDates(payment, { invoice_date: nextValue })
+                                      }
+                                    />
+                                    <button
+                                      type="button"
+                                      className="mt-1 block w-full pl-2 text-left text-[11px] text-gray-400 hover:text-gray-600"
+                                      onClick={() => {
+                                        if (confirm('세금계산서 발행일을 초기화할까요?')) {
+                                          updatePaymentDates(payment, { invoice_date: null });
+                                        }
+                                      }}
+                                    >
+                                      발행일 초기화
+                                    </button>
+                                  </div>
+                                ) : isWithholding ? (
+                                  <span className="text-gray-500">원천징수</span>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 text-[13px] text-gray-900">
+                                <div className="w-[138px]">
+                                  <InlineDateField
+                                    id={`project-payment-${payment.id}`}
+                                    value={paymentValue}
+                                    emptyLabel="지급일 선택"
+                                    className="w-[138px]"
+                                    onChange={(nextValue) =>
+                                      updatePaymentDates(payment, { payment_date: nextValue })
+                                    }
+                                  />
+                                  <button
+                                    type="button"
+                                    className="mt-1 block w-full pl-2 text-left text-[11px] text-gray-400 hover:text-gray-600"
+                                    onClick={() => {
+                                      if (confirm('지급일을 초기화할까요?')) {
+                                        updatePaymentDates(payment, { payment_date: null });
+                                      }
+                                    }}
+                                  >
+                                    지급일 초기화
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-[13px]">
+                                <StatusToggle
+                                  value={payment.payment_status === 'completed' ? 'completed' : 'pending'}
+                                  onChange={(nextStatus) => togglePaymentStatus(payment, nextStatus)}
+                                />
+                              </td>
+                              <td className="px-3 py-3 text-[13px]">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => openPaymentEditForm(payment)}
+                                    className="px-2.5 py-1.5 text-[12px] font-semibold text-gray-700 bg-white border border-gray-200 rounded hover:border-black transition-colors"
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                    onClick={() => deletePayment(payment.id)}
+                                    className="px-2.5 py-1.5 text-[12px] font-semibold text-red-600 bg-white border border-red-200 rounded hover:bg-red-50 transition-colors"
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
