@@ -36,6 +36,7 @@ export default function ProjectDetailPage() {
   const [activeTab, setActiveTab] = useState<'payments' | 'expenses'>('payments');
   const [loading, setLoading] = useState(true);
   const [paymentSortMode, setPaymentSortMode] = useState<'updated' | 'method' | 'staff' | 'amount'>('updated');
+  const [expenseSortMode, setExpenseSortMode] = useState<'created' | 'date_desc' | 'date_asc' | 'type'>('created');
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
@@ -754,6 +755,44 @@ export default function ProjectDetailPage() {
 
     return list;
   }, [payments, paymentSortMode, paymentMethodById, staffTypeById]);
+
+  const sortedExpenses = useMemo(() => {
+    const list = [...expenses];
+    const getExpenseDateTime = (expense: Expense) =>
+      expense.expense_date ? new Date(expense.expense_date).getTime() : null;
+    const getCreatedTime = (expense: Expense) =>
+      new Date(expense.created_at).getTime();
+    const getUpdatedTime = (expense: Expense) =>
+      new Date(expense.updated_at || expense.created_at).getTime();
+    const getTypeLabel = (expense: Expense) =>
+      expense.is_company_expense ? '회사' : '개인';
+
+    list.sort((a, b) => {
+      if (expenseSortMode === 'created') {
+        return getCreatedTime(b) - getCreatedTime(a);
+      }
+
+      if (expenseSortMode === 'date_desc' || expenseSortMode === 'date_asc') {
+        const timeA = getExpenseDateTime(a);
+        const timeB = getExpenseDateTime(b);
+
+        if (timeA !== null && timeB !== null && timeA !== timeB) {
+          return expenseSortMode === 'date_desc' ? timeB - timeA : timeA - timeB;
+        }
+        if (timeA === null && timeB !== null) return 1;
+        if (timeA !== null && timeB === null) return -1;
+      }
+
+      if (expenseSortMode === 'type') {
+        const typeDiff = getTypeLabel(a).localeCompare(getTypeLabel(b), 'ko-KR');
+        if (typeDiff !== 0) return typeDiff;
+      }
+
+      return getUpdatedTime(b) - getUpdatedTime(a);
+    });
+
+    return list;
+  }, [expenses, expenseSortMode]);
 
   const updatePaymentDates = async (
     payment: Payment,
@@ -1709,40 +1748,62 @@ export default function ProjectDetailPage() {
               <div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
                   <h2 className="text-[20px] font-bold text-gray-900">지출 내역</h2>
-                  <button
-                    onClick={() => {
-                      setEditingExpenseId(null);
-                      setNewExpense({
-                        expense_number: null,
-                        expense_date: '',
-                        amount: '',
-                        vendor: '',
-                        description: '',
-                        note: '',
-                        is_company_expense: true,
-                        card_id: null,
-                        card_last4: '',
-                        card_alias: '',
-                        payer_name: '',
-                        payer_bank_name: '',
-                        payer_account_number: '',
-                        payment_status: 'completed',
-                      });
-                      setSelectedExpenseCardId('');
-                      setNewCardLast4('');
-                      setNewCardAlias('');
-                      cancelEditExpenseCard();
-                      setShowExpenseForm(true);
-                    }}
-                    className="px-5 py-2.5 text-[14px] text-white font-semibold rounded-lg transition-all bg-black hover:bg-gray-800"
-                  >
-                    <span className="flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="relative">
+                      <select
+                        value={expenseSortMode}
+                        onChange={(e) => setExpenseSortMode(e.target.value as 'created' | 'date_desc' | 'date_asc' | 'type')}
+                        className="h-11 min-w-[160px] appearance-none rounded-lg border border-[--border] bg-white px-3 pr-10 text-[14px] font-medium text-gray-700"
+                      >
+                        <option value="created">추가순</option>
+                        <option value="date_desc">날짜 최신순</option>
+                        <option value="date_asc">날짜 오래된순</option>
+                        <option value="type">구분별</option>
+                      </select>
+                      <svg
+                        aria-hidden="true"
+                        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[--gray-400]"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path d="M5.5 7.5L10 12l4.5-4.5" />
                       </svg>
-                      지출 항목 추가
-                    </span>
-                  </button>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setEditingExpenseId(null);
+                        setNewExpense({
+                          expense_number: null,
+                          expense_date: '',
+                          amount: '',
+                          vendor: '',
+                          description: '',
+                          note: '',
+                          is_company_expense: true,
+                          card_id: null,
+                          card_last4: '',
+                          card_alias: '',
+                          payer_name: '',
+                          payer_bank_name: '',
+                          payer_account_number: '',
+                          payment_status: 'completed',
+                        });
+                        setSelectedExpenseCardId('');
+                        setNewCardLast4('');
+                        setNewCardAlias('');
+                        cancelEditExpenseCard();
+                        setShowExpenseForm(true);
+                      }}
+                      className="px-5 py-2.5 text-[14px] text-white font-semibold rounded-lg transition-all bg-black hover:bg-gray-800"
+                    >
+                      <span className="flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        지출 항목 추가
+                      </span>
+                    </button>
+                  </div>
                 </div>
 
                 {expenses.length === 0 ? (
@@ -1763,7 +1824,7 @@ export default function ProjectDetailPage() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {expenses.map((expense) => (
+                        {sortedExpenses.map((expense) => (
                           <tr key={expense.id}>
                             <td className="px-4 py-4 text-sm text-gray-900">
                               {expense.expense_date ? new Date(expense.expense_date).toLocaleDateString('ko-KR') : '-'}
