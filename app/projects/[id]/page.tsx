@@ -8,6 +8,8 @@ import { useParams, useSearchParams } from 'next/navigation';
 import InlineDateField from '@/components/InlineDateField';
 import StatusToggle from '@/components/StatusToggle';
 
+const PAYMENT_AMOUNT_MODE_PREFIX = '[[pebs_amount_mode:actual]]';
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -44,6 +46,7 @@ export default function ProjectDetailPage() {
   const [useCustomBank, setUseCustomBank] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [showProjectEditForm, setShowProjectEditForm] = useState(false);
+  const [paymentAmountMode, setPaymentAmountMode] = useState<'supply' | 'actual'>('supply');
   const [projectForm, setProjectForm] = useState({ name: '', client: '' });
   const [paymentErrors, setPaymentErrors] = useState<{
     recipient?: boolean;
@@ -123,6 +126,51 @@ export default function ProjectDetailPage() {
     return value.replace(/[^0-9]/g, '');
   };
 
+  const parsePaymentMemoMeta = (memo: string | null | undefined) => {
+    if (!memo) {
+      return { amountMode: 'supply' as const, displayMemo: '' };
+    }
+
+    if (memo.startsWith(PAYMENT_AMOUNT_MODE_PREFIX)) {
+      const displayMemo = memo
+        .slice(PAYMENT_AMOUNT_MODE_PREFIX.length)
+        .replace(/^\n/, '');
+      return { amountMode: 'actual' as const, displayMemo };
+    }
+
+    return { amountMode: 'supply' as const, displayMemo: memo };
+  };
+
+  const buildPaymentMemo = (displayMemo: string, amountMode: 'supply' | 'actual') => {
+    const trimmedMemo = displayMemo.trim();
+    if (amountMode === 'actual') {
+      return trimmedMemo
+        ? `${PAYMENT_AMOUNT_MODE_PREFIX}\n${trimmedMemo}`
+        : PAYMENT_AMOUNT_MODE_PREFIX;
+    }
+    return trimmedMemo;
+  };
+
+  const getActualAmountFromBase = (baseAmount: number, methodName: string) => {
+    if (methodName === '세금계산서') {
+      return Math.round(baseAmount * 1.1);
+    }
+    if (methodName === '원천징수') {
+      return Math.round(baseAmount * 0.967);
+    }
+    return baseAmount;
+  };
+
+  const getBaseAmountFromActual = (actualAmount: number, methodName: string) => {
+    if (methodName === '세금계산서') {
+      return Math.round(actualAmount / 1.1);
+    }
+    if (methodName === '원천징수') {
+      return Math.round(actualAmount / 0.967);
+    }
+    return actualAmount;
+  };
+
   const formatAccountPreview = (value: string | null) => {
     if (!value) return '';
     const digits = value.replace(/[^0-9]/g, '');
@@ -152,6 +200,7 @@ export default function ProjectDetailPage() {
     ? paymentMethodById.get(newPayment.payment_method_id) || ''
     : '';
   const requiresResidentNumber = selectedPaymentMethodName === '원천징수';
+  const paymentAmountValue = newPayment.amount;
 
   const bankOptions = [
     '국민은행',
@@ -678,14 +727,23 @@ export default function ProjectDetailPage() {
   };
 
   const getActualAmount = (payment: Payment) => {
+    const { amountMode } = parsePaymentMemoMeta(payment.memo);
     const methodName = payment.payment_method_id
       ? paymentMethodById.get(payment.payment_method_id) || ''
       : '';
-    if (methodName === '세금계산서') {
-      return Math.round((payment.amount || 0) * 1.1);
+    if (amountMode === 'actual') {
+      return payment.amount || 0;
     }
-    if (methodName === '원천징수') {
-      return Math.round((payment.amount || 0) * 0.967);
+    return getActualAmountFromBase(payment.amount || 0, methodName);
+  };
+
+  const getSupplyAmount = (payment: Payment) => {
+    const { amountMode } = parsePaymentMemoMeta(payment.memo);
+    const methodName = payment.payment_method_id
+      ? paymentMethodById.get(payment.payment_method_id) || ''
+      : '';
+    if (amountMode === 'actual') {
+      return null;
     }
     return payment.amount || 0;
   };
@@ -943,6 +1001,7 @@ export default function ProjectDetailPage() {
         company_name: paymentData.company_name || null,
         item: staffTypeName === '기타' && paymentData.item ? paymentData.item.trim() : null,
         amount: amount ? Number(amount) : 0,
+        memo: buildPaymentMemo(paymentData.memo, paymentAmountMode) || null,
         invoice_date: paymentData.invoice_date || null,
         payment_date: paymentData.payment_date || null,
         id_card_url: paymentData.id_card_url || null,
@@ -959,6 +1018,7 @@ export default function ProjectDetailPage() {
       setShowPaymentForm(false);
       setEditingPaymentId(null);
       setNewPayment({ ...emptyPayment });
+      setPaymentAmountMode('supply');
       setCustomBankName('');
       setUseCustomBank(false);
       setRecipientMatches([]);
@@ -985,6 +1045,7 @@ export default function ProjectDetailPage() {
         company_name: paymentData.company_name || null,
         item: staffTypeName === '기타' && paymentData.item ? paymentData.item.trim() : null,
         amount: amount ? Number(amount) : 0,
+        memo: buildPaymentMemo(paymentData.memo, paymentAmountMode) || null,
         invoice_date: paymentData.invoice_date || null,
         payment_date: paymentData.payment_date || null,
         id_card_url: paymentData.id_card_url || null,
@@ -1002,6 +1063,7 @@ export default function ProjectDetailPage() {
       setShowPaymentForm(false);
       setEditingPaymentId(null);
       setNewPayment({ ...emptyPayment });
+      setPaymentAmountMode('supply');
       setCustomBankName('');
       setUseCustomBank(false);
       setRecipientMatches([]);
@@ -1313,6 +1375,8 @@ export default function ProjectDetailPage() {
 
   const openPaymentEditForm = (payment: Payment) => {
     setEditingPaymentId(payment.id);
+    const { amountMode, displayMemo } = parsePaymentMemoMeta(payment.memo);
+    setPaymentAmountMode(amountMode);
     if (payment.bank_name && !bankOptions.includes(payment.bank_name)) {
       setCustomBankName(payment.bank_name);
       setUseCustomBank(true);
@@ -1332,7 +1396,7 @@ export default function ProjectDetailPage() {
       resident_number: payment.resident_number || '',
       invoice_date: payment.invoice_date || '',
       payment_date: payment.payment_date || '',
-      memo: payment.memo || '',
+      memo: displayMemo,
       id_card_image: null,
       bankbook_image: null,
       id_card_url: payment.id_card_url || '',
@@ -1585,6 +1649,7 @@ export default function ProjectDetailPage() {
                     <button
                       onClick={() => {
                         setEditingPaymentId(null);
+                        setPaymentAmountMode('supply');
                         setNewPayment({ ...emptyPayment });
                         setCustomBankName('');
                         setUseCustomBank(false);
@@ -1648,7 +1713,7 @@ export default function ProjectDetailPage() {
                                 {methodName || '-'}
                               </td>
                               <td className="px-3 py-3 text-[13px] font-semibold text-gray-900 whitespace-nowrap">
-                                {payment.amount.toLocaleString()}원
+                                {getSupplyAmount(payment) === null ? '-' : `${getSupplyAmount(payment)?.toLocaleString()}원`}
                               </td>
                               <td className="px-3 py-3 text-[13px] font-semibold text-gray-900 whitespace-nowrap">
                                 {getActualAmount(payment).toLocaleString()}원
@@ -2078,13 +2143,50 @@ export default function ProjectDetailPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-[--gray-700] mb-1">
-                  공급가액 <span className="text-xs text-[--gray-500]">(부가세 제외)</span>
+                  금액 입력 기준
+                </label>
+                <div className="inline-flex rounded-xl border border-[--border] bg-white p-1">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentAmountMode('supply')}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                      paymentAmountMode === 'supply'
+                        ? 'bg-black text-white'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    공급가액
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentAmountMode('actual')}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                      paymentAmountMode === 'actual'
+                        ? 'bg-black text-white'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    실입금액
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[--gray-700] mb-1">
+                  {paymentAmountMode === 'supply' ? (
+                    <>
+                      공급가액 <span className="text-xs text-[--gray-500]">(부가세 제외)</span>
+                    </>
+                  ) : (
+                    '실입금액'
+                  )}
                 </label>
                 <input
                   type="text"
-                  value={formatAmount(newPayment.amount)}
+                  value={formatAmount(paymentAmountValue)}
                   onChange={(e) => {
-                    setNewPayment({ ...newPayment, amount: parseAmount(e.target.value) });
+                    const rawValue = parseAmount(e.target.value);
+                    const nextAmount = rawValue ? String(Number(rawValue)) : '';
+                    setNewPayment({ ...newPayment, amount: nextAmount });
                     setPaymentErrors((prev) => ({ ...prev, amount: false }));
                   }}
                   className={`w-full px-3 py-2.5 border rounded-xl bg-white text-sm placeholder:text-[--gray-500] ${
@@ -2165,109 +2267,113 @@ export default function ProjectDetailPage() {
                   <p className="mt-1 text-xs text-amber-600">{accountLengthWarning}</p>
                 )}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-[--gray-700] mb-1">주민등록번호</label>
-                <input
-                  type="text"
-                  value={newPayment.resident_number}
-                  onChange={(e) => {
-                    setNewPayment({ ...newPayment, resident_number: e.target.value });
-                    setPaymentErrors((prev) => ({ ...prev, resident_number: false }));
-                  }}
-                  className={`w-full px-3 py-2.5 border rounded-xl bg-white text-sm placeholder:text-[--gray-500] ${
-                    paymentErrors.resident_number ? 'border-red-500' : 'border-[--border]'
-                  }`}
-                  placeholder="원천징수용"
-                />
-                {paymentErrors.resident_number && (
-                  <p className="mt-1 text-xs text-red-600">원천징수 선택 시 필수입니다.</p>
-                )}
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-[--gray-700] mb-2">
-                  신분증/통장 업로드 (OCR 자동 인식)
-                </label>
-                <div
-                  className="border border-dashed border-[--border-dark] bg-[--gray-50] rounded-xl p-4 hover:border-[--primary] transition-colors cursor-default"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const files = Array.from(e.dataTransfer.files || []);
-                    addOcrFiles(files);
-                  }}
-                >
-                  <div className="text-sm text-[--gray-600]">
-                    <p>드래그&드롭 또는 붙여넣기(Cmd/Ctrl+V)</p>
-                    <p className="mt-1 text-xs text-[--gray-500]">여러 장 업로드 가능 (최대 10장)</p>
-                    <p className="mt-1 text-xs text-[--gray-500]">미리보기 클릭 시 크게 보기</p>
+              {requiresResidentNumber && (
+                <>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-[--gray-700] mb-1">주민등록번호</label>
+                    <input
+                      type="text"
+                      value={newPayment.resident_number}
+                      onChange={(e) => {
+                        setNewPayment({ ...newPayment, resident_number: e.target.value });
+                        setPaymentErrors((prev) => ({ ...prev, resident_number: false }));
+                      }}
+                      className={`w-full px-3 py-2.5 border rounded-xl bg-white text-sm placeholder:text-[--gray-500] ${
+                        paymentErrors.resident_number ? 'border-red-500' : 'border-[--border]'
+                      }`}
+                      placeholder="원천징수용"
+                    />
+                    {paymentErrors.resident_number && (
+                      <p className="mt-1 text-xs text-red-600">원천징수 선택 시 필수입니다.</p>
+                    )}
                   </div>
-                  {ocrFiles.length > 0 && (
-                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {ocrFiles.map((entry, index) => (
-                        <div
-                          key={`${entry.file.name}-${index}`}
-                          className="border border-[--border] rounded-xl p-2 bg-white"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setPreviewImage({ url: entry.previewUrl, name: entry.file.name })}
-                            className="h-20 w-full overflow-hidden rounded-lg cursor-zoom-in"
-                          >
-                            <img
-                              src={entry.previewUrl}
-                              alt={entry.file.name}
-                              className="h-full w-full object-cover"
-                            />
-                          </button>
-                          <p className="mt-2 text-xs text-[--gray-700] truncate">{entry.file.name}</p>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeOcrFile(index);
-                            }}
-                            className="mt-1 text-xs text-[--gray-500] hover:text-[--gray-700]"
-                          >
-                            삭제
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleOcrRecognition}
-                    disabled={ocrProcessing || ocrFiles.length === 0}
-                    className="btn-primary px-4 py-2 rounded-xl text-sm disabled:opacity-60"
-                  >
-                    {ocrProcessing ? '인식 중...' : '인식'}
-                  </button>
-                  {ocrFiles.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={clearOcrFiles}
-                      className="btn-outline px-4 py-2 rounded-xl text-sm"
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-[--gray-700] mb-2">
+                      신분증/통장 업로드 (OCR 자동 인식)
+                    </label>
+                    <div
+                      className="border border-dashed border-[--border-dark] bg-[--gray-50] rounded-xl p-4 hover:border-[--primary] transition-colors cursor-default"
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const files = Array.from(e.dataTransfer.files || []);
+                        addOcrFiles(files);
+                      }}
                     >
-                      전체 제거
-                    </button>
-                  )}
-                </div>
-                <p className="mt-2 text-xs text-amber-600">
-                  OCR 결과가 정확하지 않을 수 있으니 주민등록번호와 계좌번호는 직접 확인해주세요.
-                </p>
-                {ocrWarnings.length > 0 && (
-                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-                    <div className="font-semibold">OCR 경고</div>
-                    <ul className="mt-1 list-disc list-inside space-y-1">
-                      {ocrWarnings.map((warning, index) => (
-                        <li key={`${warning}-${index}`}>{warning}</li>
-                      ))}
-                    </ul>
+                      <div className="text-sm text-[--gray-600]">
+                        <p>드래그&드롭 또는 붙여넣기(Cmd/Ctrl+V)</p>
+                        <p className="mt-1 text-xs text-[--gray-500]">여러 장 업로드 가능 (최대 10장)</p>
+                        <p className="mt-1 text-xs text-[--gray-500]">미리보기 클릭 시 크게 보기</p>
+                      </div>
+                      {ocrFiles.length > 0 && (
+                        <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                          {ocrFiles.map((entry, index) => (
+                            <div
+                              key={`${entry.file.name}-${index}`}
+                              className="border border-[--border] rounded-xl p-2 bg-white"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => setPreviewImage({ url: entry.previewUrl, name: entry.file.name })}
+                                className="h-20 w-full overflow-hidden rounded-lg cursor-zoom-in"
+                              >
+                                <img
+                                  src={entry.previewUrl}
+                                  alt={entry.file.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              </button>
+                              <p className="mt-2 text-xs text-[--gray-700] truncate">{entry.file.name}</p>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeOcrFile(index);
+                                }}
+                                className="mt-1 text-xs text-[--gray-500] hover:text-[--gray-700]"
+                              >
+                                삭제
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleOcrRecognition}
+                        disabled={ocrProcessing || ocrFiles.length === 0}
+                        className="btn-primary px-4 py-2 rounded-xl text-sm disabled:opacity-60"
+                      >
+                        {ocrProcessing ? '인식 중...' : '인식'}
+                      </button>
+                      {ocrFiles.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={clearOcrFiles}
+                          className="btn-outline px-4 py-2 rounded-xl text-sm"
+                        >
+                          전체 제거
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs text-amber-600">
+                      OCR 결과가 정확하지 않을 수 있으니 주민등록번호와 계좌번호는 직접 확인해주세요.
+                    </p>
+                    {ocrWarnings.length > 0 && (
+                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+                        <div className="font-semibold">OCR 경고</div>
+                        <ul className="mt-1 list-disc list-inside space-y-1">
+                          {ocrWarnings.map((warning, index) => (
+                            <li key={`${warning}-${index}`}>{warning}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </>
+              )}
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-[--gray-700] mb-1">메모</label>
                 <textarea
@@ -2280,10 +2386,11 @@ export default function ProjectDetailPage() {
             </div>
             <div className="flex gap-3 mt-6">
               <button
-                onClick={() => {
-                  setShowPaymentForm(false);
-                  setEditingPaymentId(null);
-                  setNewPayment({ ...emptyPayment });
+                  onClick={() => {
+                    setShowPaymentForm(false);
+                    setEditingPaymentId(null);
+                    setPaymentAmountMode('supply');
+                    setNewPayment({ ...emptyPayment });
                   setCustomBankName('');
                   setUseCustomBank(false);
                   setRecipientMatches([]);

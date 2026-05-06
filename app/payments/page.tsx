@@ -7,6 +7,8 @@ import { Payment, PaymentMethod, Project, StaffType } from '@/lib/types';
 import InlineDateField from '@/components/InlineDateField';
 import StatusToggle from '@/components/StatusToggle';
 
+const PAYMENT_AMOUNT_MODE_PREFIX = '[[pebs_amount_mode:actual]]';
+
 type SortMode = 'project' | 'recipient' | 'updated' | 'staff' | 'method';
 type ViewStatus = 'pending' | 'completed';
 type PaymentListItem = Payment & {
@@ -35,6 +37,39 @@ const normalizePaymentStatus = (value: string | null) => {
     return value;
   }
   return 'pending';
+};
+
+const parsePaymentMemoMeta = (memo: string | null | undefined) => {
+  if (!memo) {
+    return { amountMode: 'supply' as const, displayMemo: '' };
+  }
+  if (memo.startsWith(PAYMENT_AMOUNT_MODE_PREFIX)) {
+    const displayMemo = memo
+      .slice(PAYMENT_AMOUNT_MODE_PREFIX.length)
+      .replace(/^\n/, '');
+    return { amountMode: 'actual' as const, displayMemo };
+  }
+  return { amountMode: 'supply' as const, displayMemo: memo };
+};
+
+const getActualAmountFromBase = (baseAmount: number, methodName: string) => {
+  if (methodName === '세금계산서') {
+    return Math.round(baseAmount * 1.1);
+  }
+  if (methodName === '원천징수') {
+    return Math.round(baseAmount * 0.967);
+  }
+  return baseAmount;
+};
+
+const getBaseAmountFromActual = (actualAmount: number, methodName: string) => {
+  if (methodName === '세금계산서') {
+    return Math.round(actualAmount / 1.1);
+  }
+  if (methodName === '원천징수') {
+    return Math.round(actualAmount / 0.967);
+  }
+  return actualAmount;
 };
 
 export default function PaymentListPage() {
@@ -387,11 +422,24 @@ export default function PaymentListPage() {
 
   const getActualAmount = (payment: PaymentListItem) => {
     const methodName = payment.method_label || methodMap.get(payment.payment_method_id || 0) || '';
-    if (methodName === '세금계산서') {
-      return Math.round((payment.amount || 0) * 1.1);
+    if (payment.source === 'expense') {
+      return payment.amount || 0;
     }
-    if (methodName === '원천징수') {
-      return Math.round((payment.amount || 0) * 0.967);
+    const { amountMode } = parsePaymentMemoMeta(payment.memo);
+    if (amountMode === 'actual') {
+      return payment.amount || 0;
+    }
+    return getActualAmountFromBase(payment.amount || 0, methodName);
+  };
+
+  const getSupplyAmount = (payment: PaymentListItem) => {
+    const methodName = payment.method_label || methodMap.get(payment.payment_method_id || 0) || '';
+    if (payment.source === 'expense') {
+      return payment.amount || 0;
+    }
+    const { amountMode } = parsePaymentMemoMeta(payment.memo);
+    if (amountMode === 'actual') {
+      return null;
     }
     return payment.amount || 0;
   };
@@ -587,10 +635,10 @@ export default function PaymentListPage() {
                                     {methodName || '-'}
                                   </td>
                                   <td className="px-3 py-3 text-[13px] font-semibold text-gray-900 whitespace-nowrap">
-                                    {payment.amount.toLocaleString()}원
+                                    {getSupplyAmount(payment) === null ? '-' : `${getSupplyAmount(payment)?.toLocaleString()}원`}
                                   </td>
                                   <td className="px-3 py-3 text-[13px] font-semibold text-gray-900 whitespace-nowrap">
-                                    {payment.source === 'expense' ? '-' : `${getActualAmount(payment).toLocaleString()}원`}
+                                    {`${getActualAmount(payment).toLocaleString()}원`}
                                   </td>
                                   <td className="px-3 py-3 text-[13px] text-gray-700">
                                     {(() => {
