@@ -24,6 +24,7 @@ export interface Payment {
   recipient: string | null;
   company_name: string | null;
   amount: number;
+  currency?: 'KRW' | 'USD';
   payment_method_id: number | null;
   staff_type_id: number | null;
   bank_name: string | null;
@@ -57,6 +58,7 @@ export interface Expense {
   expense_number: number | null;
   expense_date: string | null;
   amount: number;
+  currency?: 'KRW' | 'USD';
   vendor: string | null;
   description: string | null;
   category: string | null;

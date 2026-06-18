@@ -47,6 +47,8 @@ export default function ProjectDetailPage() {
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [showProjectEditForm, setShowProjectEditForm] = useState(false);
   const [paymentAmountMode, setPaymentAmountMode] = useState<'supply' | 'actual'>('supply');
+  const [paymentCurrency, setPaymentCurrency] = useState<'KRW' | 'USD'>('KRW');
+  const [expenseCurrency, setExpenseCurrency] = useState<'KRW' | 'USD'>('KRW');
   const [projectForm, setProjectForm] = useState({ name: '', client: '' });
   const [paymentErrors, setPaymentErrors] = useState<{
     recipient?: boolean;
@@ -1001,6 +1003,7 @@ export default function ProjectDetailPage() {
         company_name: paymentData.company_name || null,
         item: staffTypeName === '기타' && paymentData.item ? paymentData.item.trim() : null,
         amount: amount ? Number(amount) : 0,
+        currency: paymentCurrency,
         memo: buildPaymentMemo(paymentData.memo, paymentAmountMode) || null,
         invoice_date: paymentData.invoice_date || null,
         payment_date: paymentData.payment_date || null,
@@ -1019,6 +1022,7 @@ export default function ProjectDetailPage() {
       setEditingPaymentId(null);
       setNewPayment({ ...emptyPayment });
       setPaymentAmountMode('supply');
+      setPaymentCurrency('KRW');
       setCustomBankName('');
       setUseCustomBank(false);
       setRecipientMatches([]);
@@ -1045,6 +1049,7 @@ export default function ProjectDetailPage() {
         company_name: paymentData.company_name || null,
         item: staffTypeName === '기타' && paymentData.item ? paymentData.item.trim() : null,
         amount: amount ? Number(amount) : 0,
+        currency: paymentCurrency,
         memo: buildPaymentMemo(paymentData.memo, paymentAmountMode) || null,
         invoice_date: paymentData.invoice_date || null,
         payment_date: paymentData.payment_date || null,
@@ -1064,6 +1069,7 @@ export default function ProjectDetailPage() {
       setEditingPaymentId(null);
       setNewPayment({ ...emptyPayment });
       setPaymentAmountMode('supply');
+      setPaymentCurrency('KRW');
       setCustomBankName('');
       setUseCustomBank(false);
       setRecipientMatches([]);
@@ -1086,6 +1092,7 @@ export default function ProjectDetailPage() {
         expense_number: newExpense.expense_number,
         expense_date: newExpense.expense_date || null,
         amount: amount ? Number(amount) : 0,
+        currency: expenseCurrency,
         vendor: newExpense.vendor || null,
         description: newExpense.description || null,
         note: newExpense.note || null,
@@ -1111,6 +1118,7 @@ export default function ProjectDetailPage() {
 
       setShowExpenseForm(false);
       setEditingExpenseId(null);
+      setExpenseCurrency('KRW');
       setNewExpense({
         expense_number: null,
         expense_date: '',
@@ -1152,6 +1160,7 @@ export default function ProjectDetailPage() {
         expense_number: newExpense.expense_number,
         expense_date: newExpense.expense_date || null,
         amount: amount ? Number(amount) : 0,
+        currency: expenseCurrency,
         vendor: newExpense.vendor || null,
         description: newExpense.description || null,
         note: newExpense.note || null,
@@ -1178,6 +1187,7 @@ export default function ProjectDetailPage() {
 
       setShowExpenseForm(false);
       setEditingExpenseId(null);
+      setExpenseCurrency('KRW');
       setNewExpense({
         expense_number: null,
         expense_date: '',
@@ -1375,6 +1385,7 @@ export default function ProjectDetailPage() {
 
   const openPaymentEditForm = (payment: Payment) => {
     setEditingPaymentId(payment.id);
+    setPaymentCurrency((payment.currency as 'KRW' | 'USD') || 'KRW');
     const { amountMode, displayMemo } = parsePaymentMemoMeta(payment.memo);
     setPaymentAmountMode(amountMode);
     if (payment.bank_name && !bankOptions.includes(payment.bank_name)) {
@@ -1416,6 +1427,7 @@ export default function ProjectDetailPage() {
     const hasCard = Boolean(expense.card_id && expenseCards.some((card) => card.id === expense.card_id));
 
     setEditingExpenseId(expense.id);
+    setExpenseCurrency((expense.currency as 'KRW' | 'USD') || 'KRW');
     setNewExpense({
       expense_number: expense.expense_number ?? null,
       expense_date: expense.expense_date ?? '',
@@ -1713,10 +1725,16 @@ export default function ProjectDetailPage() {
                                 {methodName || '-'}
                               </td>
                               <td className="px-3 py-3 text-[13px] font-semibold text-gray-900 whitespace-nowrap">
-                                {getSupplyAmount(payment) === null ? '-' : `${getSupplyAmount(payment)?.toLocaleString()}원`}
+                                {getSupplyAmount(payment) === null ? '-' : (
+                                  payment.currency === 'USD'
+                                    ? `$${getSupplyAmount(payment)?.toLocaleString()}`
+                                    : `${getSupplyAmount(payment)?.toLocaleString()}원`
+                                )}
                               </td>
                               <td className="px-3 py-3 text-[13px] font-semibold text-gray-900 whitespace-nowrap">
-                                {getActualAmount(payment).toLocaleString()}원
+                                {payment.currency === 'USD'
+                                  ? `$${getActualAmount(payment).toLocaleString()}`
+                                  : `${getActualAmount(payment).toLocaleString()}원`}
                               </td>
                               <td className="px-3 py-3 text-[13px] text-gray-900">
                                 {payment.bank_name && payment.account_number
@@ -1909,7 +1927,9 @@ export default function ProjectDetailPage() {
                               )}
                             </td>
                             <td className="px-4 py-4 text-sm font-semibold text-gray-900">
-                              {expense.amount.toLocaleString()}원
+                              {expense.currency === 'USD'
+                                ? `$${expense.amount.toLocaleString()}`
+                                : `${expense.amount.toLocaleString()}원`}
                             </td>
                             <td className="px-4 py-4 text-sm text-gray-900">
                               {expense.is_company_expense ? (
@@ -2180,20 +2200,31 @@ export default function ProjectDetailPage() {
                     '실입금액'
                   )}
                 </label>
-                <input
-                  type="text"
-                  value={formatAmount(paymentAmountValue)}
-                  onChange={(e) => {
-                    const rawValue = parseAmount(e.target.value);
-                    const nextAmount = rawValue ? String(Number(rawValue)) : '';
-                    setNewPayment({ ...newPayment, amount: nextAmount });
-                    setPaymentErrors((prev) => ({ ...prev, amount: false }));
-                  }}
-                  className={`w-full px-3 py-2.5 border rounded-xl bg-white text-sm placeholder:text-[--gray-500] ${
-                    paymentErrors.amount ? 'border-red-500' : 'border-[--border]'
-                  }`}
-                  placeholder="1,000,000"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formatAmount(paymentAmountValue)}
+                    onChange={(e) => {
+                      const rawValue = parseAmount(e.target.value);
+                      const nextAmount = rawValue ? String(Number(rawValue)) : '';
+                      setNewPayment({ ...newPayment, amount: nextAmount });
+                      setPaymentErrors((prev) => ({ ...prev, amount: false }));
+                    }}
+                    className={`w-full px-3 py-2.5 pr-14 border rounded-xl bg-white text-sm placeholder:text-[--gray-500] ${
+                      paymentErrors.amount ? 'border-red-500' : 'border-[--border]'
+                    }`}
+                    placeholder="1,000,000"
+                  />
+                  <span
+                    onDoubleClick={() => setPaymentCurrency((prev) => (prev === 'KRW' ? 'USD' : 'KRW'))}
+                    className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold cursor-default select-none transition-colors ${
+                      paymentCurrency === 'USD' ? 'text-blue-500' : 'text-gray-400'
+                    }`}
+                    title="더블클릭으로 통화 변경 (KRW ↔ USD)"
+                  >
+                    {paymentCurrency === 'KRW' ? '원' : '$'}
+                  </span>
+                </div>
                 {paymentErrors.amount && (
                   <p className="mt-1 text-xs text-red-600">필수 항목입니다.</p>
                 )}
@@ -2390,6 +2421,7 @@ export default function ProjectDetailPage() {
                     setShowPaymentForm(false);
                     setEditingPaymentId(null);
                     setPaymentAmountMode('supply');
+                    setPaymentCurrency('KRW');
                     setNewPayment({ ...emptyPayment });
                   setCustomBankName('');
                   setUseCustomBank(false);
@@ -2520,13 +2552,24 @@ export default function ProjectDetailPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-[--gray-700] mb-1">금액</label>
-                <input
-                  type="text"
-                  value={formatAmount(newExpense.amount)}
-                  onChange={(e) => setNewExpense({ ...newExpense, amount: parseAmount(e.target.value) })}
-                  className="w-full px-3 py-2.5 border border-[--border] rounded-xl bg-white text-sm placeholder:text-[--gray-500]"
-                  placeholder="1,000,000"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formatAmount(newExpense.amount)}
+                    onChange={(e) => setNewExpense({ ...newExpense, amount: parseAmount(e.target.value) })}
+                    className="w-full px-3 py-2.5 pr-14 border border-[--border] rounded-xl bg-white text-sm placeholder:text-[--gray-500]"
+                    placeholder="1,000,000"
+                  />
+                  <span
+                    onDoubleClick={() => setExpenseCurrency((prev) => (prev === 'KRW' ? 'USD' : 'KRW'))}
+                    className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold cursor-default select-none transition-colors ${
+                      expenseCurrency === 'USD' ? 'text-blue-500' : 'text-gray-400'
+                    }`}
+                    title="더블클릭으로 통화 변경 (KRW ↔ USD)"
+                  >
+                    {expenseCurrency === 'KRW' ? '원' : '$'}
+                  </span>
+                </div>
               </div>
               {newExpense.is_company_expense && (
                 <div className="col-span-2">
@@ -2775,6 +2818,7 @@ export default function ProjectDetailPage() {
                 onClick={() => {
                   setShowExpenseForm(false);
                   setEditingExpenseId(null);
+                  setExpenseCurrency('KRW');
                   setSelectedExpenseCardId('');
                   setNewCardLast4('');
                   setNewCardAlias('');

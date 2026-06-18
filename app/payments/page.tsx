@@ -30,6 +30,7 @@ type PersonalExpenseRow = {
   payment_date: string | null;
   created_at: string;
   is_company_expense: boolean | null;
+  currency: string | null;
 };
 
 const normalizePaymentStatus = (value: string | null) => {
@@ -103,7 +104,7 @@ export default function PaymentListPage() {
           supabase
             .from('payments')
             .select(
-              'id, project_id, item, recipient, company_name, amount, payment_method_id, staff_type_id, bank_name, account_number, resident_number, id_card_url, bankbook_url, payment_status, invoice_date, payment_date, memo, created_at, updated_at'
+              'id, project_id, item, recipient, company_name, amount, currency, payment_method_id, staff_type_id, bank_name, account_number, resident_number, id_card_url, bankbook_url, payment_status, invoice_date, payment_date, memo, created_at, updated_at'
             )
             .order('created_at', { ascending: false }),
           supabase.from('projects').select('id, name, client, status, created_at, updated_at'),
@@ -112,7 +113,7 @@ export default function PaymentListPage() {
           supabase
             .from('expenses')
             .select(
-              'id, project_id, amount, vendor, description, note, payer_name, payer_bank_name, payer_account_number, payment_status, payment_date, created_at, is_company_expense'
+              'id, project_id, amount, currency, vendor, description, note, payer_name, payer_bank_name, payer_account_number, payment_status, payment_date, created_at, is_company_expense'
             )
             .eq('is_company_expense', false)
             .order('created_at', { ascending: false }),
@@ -138,6 +139,7 @@ export default function PaymentListPage() {
         recipient: payment.recipient ?? null,
         company_name: payment.company_name ?? null,
         amount: payment.amount ?? 0,
+        currency: ((payment as { currency?: string }).currency as 'KRW' | 'USD') || 'KRW',
         payment_method_id: payment.payment_method_id ?? null,
         staff_type_id: payment.staff_type_id ?? null,
         bank_name: payment.bank_name ?? null,
@@ -162,6 +164,7 @@ export default function PaymentListPage() {
         recipient: expense.payer_name || '개인지출',
         company_name: expense.vendor ?? null,
         amount: expense.amount ?? 0,
+        currency: (expense.currency as 'KRW' | 'USD') || 'KRW',
         payment_method_id: null,
         staff_type_id: null,
         bank_name: expense.payer_bank_name ?? null,
@@ -635,10 +638,16 @@ export default function PaymentListPage() {
                                     {methodName || '-'}
                                   </td>
                                   <td className="px-3 py-3 text-[13px] font-semibold text-gray-900 whitespace-nowrap">
-                                    {getSupplyAmount(payment) === null ? '-' : `${getSupplyAmount(payment)?.toLocaleString()}원`}
+                                    {getSupplyAmount(payment) === null ? '-' : (
+                                      payment.currency === 'USD'
+                                        ? `$${getSupplyAmount(payment)?.toLocaleString()}`
+                                        : `${getSupplyAmount(payment)?.toLocaleString()}원`
+                                    )}
                                   </td>
                                   <td className="px-3 py-3 text-[13px] font-semibold text-gray-900 whitespace-nowrap">
-                                    {`${getActualAmount(payment).toLocaleString()}원`}
+                                    {payment.currency === 'USD'
+                                      ? `$${getActualAmount(payment).toLocaleString()}`
+                                      : `${getActualAmount(payment).toLocaleString()}원`}
                                   </td>
                                   <td className="px-3 py-3 text-[13px] text-gray-700">
                                     {(() => {
