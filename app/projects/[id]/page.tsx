@@ -118,13 +118,26 @@ export default function ProjectDetailPage() {
   const editPaymentHandledRef = useRef<string | null>(null);
 
   // 금액 포맷팅 함수
-  const formatAmount = (value: string) => {
+  const formatAmount = (value: string, currency: 'KRW' | 'USD' = 'KRW') => {
+    if (!value) return '';
+    if (currency === 'USD') {
+      const cleaned = value.replace(/[^0-9.]/g, '');
+      const parts = cleaned.split('.');
+      const intFormatted = parts[0] ? Number(parts[0]).toLocaleString('en-US') : '';
+      return parts.length === 2 ? `${intFormatted}.${parts[1]}` : intFormatted;
+    }
     const number = value.replace(/[^0-9]/g, '');
     if (!number) return '';
     return Number(number).toLocaleString('ko-KR');
   };
 
-  const parseAmount = (value: string) => {
+  const parseAmount = (value: string, currency: 'KRW' | 'USD' = 'KRW') => {
+    if (currency === 'USD') {
+      const cleaned = value.replace(/[^0-9.]/g, '');
+      const firstDot = cleaned.indexOf('.');
+      if (firstDot === -1) return cleaned;
+      return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+    }
     return value.replace(/[^0-9]/g, '');
   };
 
@@ -2203,27 +2216,40 @@ export default function ProjectDetailPage() {
                 <div className="relative">
                   <input
                     type="text"
-                    value={formatAmount(paymentAmountValue)}
+                    value={formatAmount(paymentAmountValue, paymentCurrency)}
                     onChange={(e) => {
-                      const rawValue = parseAmount(e.target.value);
-                      const nextAmount = rawValue ? String(Number(rawValue)) : '';
-                      setNewPayment({ ...newPayment, amount: nextAmount });
+                      if (paymentCurrency === 'USD') {
+                        setNewPayment({ ...newPayment, amount: parseAmount(e.target.value, 'USD') });
+                      } else {
+                        const rawValue = parseAmount(e.target.value);
+                        setNewPayment({ ...newPayment, amount: rawValue ? String(Number(rawValue)) : '' });
+                      }
                       setPaymentErrors((prev) => ({ ...prev, amount: false }));
                     }}
                     className={`w-full px-3 py-2.5 pr-14 border rounded-xl bg-white text-sm placeholder:text-[--gray-500] ${
                       paymentErrors.amount ? 'border-red-500' : 'border-[--border]'
                     }`}
-                    placeholder="1,000,000"
+                    placeholder={paymentCurrency === 'USD' ? '1,234.56' : '1,000,000'}
                   />
-                  <span
-                    onDoubleClick={() => setPaymentCurrency((prev) => (prev === 'KRW' ? 'USD' : 'KRW'))}
-                    className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold cursor-default select-none transition-colors ${
-                      paymentCurrency === 'USD' ? 'text-blue-500' : 'text-gray-400'
-                    }`}
-                    title="더블클릭으로 통화 변경 (KRW ↔ USD)"
-                  >
-                    {paymentCurrency === 'KRW' ? '원' : '$'}
-                  </span>
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 group">
+                    <span
+                      onDoubleClick={() => setPaymentCurrency((prev) => (prev === 'KRW' ? 'USD' : 'KRW'))}
+                      className={`text-xs font-semibold cursor-default select-none transition-colors ${
+                        paymentCurrency === 'USD' ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                    >
+                      {paymentCurrency === 'KRW' ? '원' : '$'}
+                    </span>
+                    <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block pointer-events-none z-20">
+                      <div className="bg-gray-800 text-white text-[11px] font-medium rounded-lg px-2.5 py-1.5 whitespace-nowrap shadow-lg">
+                        더블클릭으로 KRW ↔ USD 변경
+                        <div
+                          className="absolute top-full right-1.5 w-0 h-0"
+                          style={{ borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderTop: '4px solid #1f2937' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 {paymentErrors.amount && (
                   <p className="mt-1 text-xs text-red-600">필수 항목입니다.</p>
@@ -2555,20 +2581,36 @@ export default function ProjectDetailPage() {
                 <div className="relative">
                   <input
                     type="text"
-                    value={formatAmount(newExpense.amount)}
-                    onChange={(e) => setNewExpense({ ...newExpense, amount: parseAmount(e.target.value) })}
+                    value={formatAmount(newExpense.amount, expenseCurrency)}
+                    onChange={(e) => {
+                      if (expenseCurrency === 'USD') {
+                        setNewExpense({ ...newExpense, amount: parseAmount(e.target.value, 'USD') });
+                      } else {
+                        setNewExpense({ ...newExpense, amount: parseAmount(e.target.value) });
+                      }
+                    }}
                     className="w-full px-3 py-2.5 pr-14 border border-[--border] rounded-xl bg-white text-sm placeholder:text-[--gray-500]"
-                    placeholder="1,000,000"
+                    placeholder={expenseCurrency === 'USD' ? '1,234.56' : '1,000,000'}
                   />
-                  <span
-                    onDoubleClick={() => setExpenseCurrency((prev) => (prev === 'KRW' ? 'USD' : 'KRW'))}
-                    className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold cursor-default select-none transition-colors ${
-                      expenseCurrency === 'USD' ? 'text-blue-500' : 'text-gray-400'
-                    }`}
-                    title="더블클릭으로 통화 변경 (KRW ↔ USD)"
-                  >
-                    {expenseCurrency === 'KRW' ? '원' : '$'}
-                  </span>
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 group">
+                    <span
+                      onDoubleClick={() => setExpenseCurrency((prev) => (prev === 'KRW' ? 'USD' : 'KRW'))}
+                      className={`text-xs font-semibold cursor-default select-none transition-colors ${
+                        expenseCurrency === 'USD' ? 'text-blue-500' : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                    >
+                      {expenseCurrency === 'KRW' ? '원' : '$'}
+                    </span>
+                    <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block pointer-events-none z-20">
+                      <div className="bg-gray-800 text-white text-[11px] font-medium rounded-lg px-2.5 py-1.5 whitespace-nowrap shadow-lg">
+                        더블클릭으로 KRW ↔ USD 변경
+                        <div
+                          className="absolute top-full right-1.5 w-0 h-0"
+                          style={{ borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderTop: '4px solid #1f2937' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               {newExpense.is_company_expense && (
