@@ -1528,8 +1528,10 @@ export default function ProjectDetailPage() {
     }
   };
 
-  const totalPayments = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+  const totalPaymentsKRW = payments.filter((p) => (p.currency || 'KRW') === 'KRW').reduce((sum, p) => sum + (p.amount || 0), 0);
+  const totalPaymentsUSD = payments.filter((p) => p.currency === 'USD').reduce((sum, p) => sum + (p.amount || 0), 0);
+  const totalExpensesKRW = expenses.filter((e) => (e.currency || 'KRW') === 'KRW').reduce((sum, e) => sum + (e.amount || 0), 0);
+  const totalExpensesUSD = expenses.filter((e) => e.currency === 'USD').reduce((sum, e) => sum + (e.amount || 0), 0);
 
   if (loading) {
     return (
@@ -1603,15 +1605,29 @@ export default function ProjectDetailPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <div className="bg-white rounded-lg border border-[--border] p-6 shadow-sm">
             <div className="text-[13px] text-gray-500 font-medium mb-2">총 지급액</div>
-            <div className="text-[28px] font-bold text-gray-900">
-              {totalPayments.toLocaleString()}원
-            </div>
+            {(totalPaymentsKRW > 0 || totalPaymentsUSD === 0) && (
+              <div className="text-[28px] font-bold text-gray-900">
+                {totalPaymentsKRW.toLocaleString()}원
+              </div>
+            )}
+            {totalPaymentsUSD > 0 && (
+              <div className={`font-bold text-blue-500 ${totalPaymentsKRW > 0 ? 'text-xl mt-1' : 'text-[28px]'}`}>
+                ${totalPaymentsUSD.toLocaleString('en-US')}
+              </div>
+            )}
           </div>
           <div className="bg-white rounded-lg border border-[--border] p-6 shadow-sm">
             <div className="text-[13px] text-gray-500 font-medium mb-2">총 지출액</div>
-            <div className="text-[28px] font-bold text-gray-900">
-              {totalExpenses.toLocaleString()}원
-            </div>
+            {(totalExpensesKRW > 0 || totalExpensesUSD === 0) && (
+              <div className="text-[28px] font-bold text-gray-900">
+                {totalExpensesKRW.toLocaleString()}원
+              </div>
+            )}
+            {totalExpensesUSD > 0 && (
+              <div className={`font-bold text-blue-500 ${totalExpensesKRW > 0 ? 'text-xl mt-1' : 'text-[28px]'}`}>
+                ${totalExpensesUSD.toLocaleString('en-US')}
+              </div>
+            )}
           </div>
         </div>
 
