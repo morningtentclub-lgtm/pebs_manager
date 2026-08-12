@@ -37,6 +37,9 @@ yarn-error.log*
 google-cloud-key.json
 .private/
 
+# 내보내기 산출물 (민감 데이터)
+/exports/
+
 # vercel
 .vercel
 

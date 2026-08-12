@@ -256,26 +256,6 @@ function extractBusinessRegistrationNumber(text: string): string | null {
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const image = formData.get('image') as File;
-    const type = formData.get('type') as string;
-
-    if (!ALLOWED_OCR_TYPES.has(type)) {
-      return NextResponse.json({ error: '지원하지 않는 요청입니다.' }, { status: 400 });
-    }
-
-    if (!image) {
-      return NextResponse.json({ error: '이미지가 없습니다.' }, { status: 400 });
-    }
-
-    if (!image.type || !image.type.startsWith(ALLOWED_MIME_PREFIX)) {
-      return NextResponse.json({ error: '이미지 파일만 업로드할 수 있습니다.' }, { status: 400 });
-    }
-
-    if (image.size > MAX_IMAGE_SIZE_BYTES) {
-      return NextResponse.json({ error: '이미지 용량이 너무 큽니다. 20MB 이하로 업로드해주세요.' }, { status: 413 });
-    }
-
     const authHeader = request.headers.get('authorization') || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
     if (!token) {
@@ -288,44 +268,88 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '인증에 실패했습니다.' }, { status: 401 });
     }
 
-    // 1. 이미지를 Buffer로 변환
-    const arrayBuffer = await image.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    let buffer: Buffer;
+    let filePath: string;
+    let ocrType = 'auto';
 
-    // 2. Supabase Storage에 이미지 업로드
-    const fileExt = image.name.split('.').pop();
-    const safeExt = fileExt && fileExt.length <= 10 ? fileExt : 'bin';
-    const fileName = `${type}_${Date.now()}.${safeExt}`;
-    const folderName = type === 'auto' ? 'uploads' : `${type}s`;
-    const filePath = `${folderName}/${fileName}`;
+    const contentType = request.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      // 이미 스토리지에 업로드된 이미지를 경로로 받아 인식만 수행
+      const body = await request.json().catch(() => ({}));
+      const imagePath = body?.imagePath;
+      if (
+        typeof imagePath !== 'string' ||
+        imagePath.includes('..') ||
+        !['uploads/', 'id_cards/', 'bankbooks/'].some((f) => imagePath.startsWith(f))
+      ) {
+        return NextResponse.json({ error: '올바르지 않은 이미지 경로입니다.' }, { status: 400 });
+      }
 
-    console.log('[OCR] Uploading to storage with Service Role Key...');
-    console.log('[OCR] File path:', filePath);
+      const { data: blob, error: downloadError } = await supabase.storage
+        .from('payment-images')
+        .download(imagePath);
+      if (downloadError || !blob) {
+        return NextResponse.json(
+          { error: '이미지를 불러오지 못했습니다.', details: downloadError?.message },
+          { status: 404 }
+        );
+      }
+      buffer = Buffer.from(await blob.arrayBuffer());
+      filePath = imagePath;
+    } else {
+      const formData = await request.formData();
+      const image = formData.get('image') as File;
+      const type = formData.get('type') as string;
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('payment-images')
-      .upload(filePath, buffer, {
-        contentType: image.type,
-        upsert: false,
-      });
+      if (!ALLOWED_OCR_TYPES.has(type)) {
+        return NextResponse.json({ error: '지원하지 않는 요청입니다.' }, { status: 400 });
+      }
+      ocrType = type;
 
-    if (uploadError) {
-      console.error('[OCR] 이미지 업로드 실패:', uploadError);
-      console.error('[OCR] Error details:', JSON.stringify(uploadError, null, 2));
-      const detail = uploadError.message || '';
-      const hint = detail.toLowerCase().includes('row-level security')
-        ? '스토리지 RLS 정책 또는 서비스 롤 키를 확인해주세요.'
-        : '';
-      return NextResponse.json(
-        {
-          error: '이미지 업로드에 실패했습니다.',
-          details: [detail, hint].filter(Boolean).join(' '),
-        },
-        { status: 500 }
-      );
+      if (!image) {
+        return NextResponse.json({ error: '이미지가 없습니다.' }, { status: 400 });
+      }
+
+      if (!image.type || !image.type.startsWith(ALLOWED_MIME_PREFIX)) {
+        return NextResponse.json({ error: '이미지 파일만 업로드할 수 있습니다.' }, { status: 400 });
+      }
+
+      if (image.size > MAX_IMAGE_SIZE_BYTES) {
+        return NextResponse.json({ error: '이미지 용량이 너무 큽니다. 20MB 이하로 업로드해주세요.' }, { status: 413 });
+      }
+
+      // 1. 이미지를 Buffer로 변환
+      buffer = Buffer.from(await image.arrayBuffer());
+
+      // 2. Supabase Storage에 이미지 업로드
+      const fileExt = image.name.split('.').pop();
+      const safeExt = fileExt && fileExt.length <= 10 ? fileExt : 'bin';
+      const fileName = `${type}_${Date.now()}.${safeExt}`;
+      const folderName = type === 'auto' ? 'uploads' : `${type}s`;
+      filePath = `${folderName}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('payment-images')
+        .upload(filePath, buffer, {
+          contentType: image.type,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error('[OCR] 이미지 업로드 실패:', uploadError);
+        const detail = uploadError.message || '';
+        const hint = detail.toLowerCase().includes('row-level security')
+          ? '스토리지 RLS 정책 또는 서비스 롤 키를 확인해주세요.'
+          : '';
+        return NextResponse.json(
+          {
+            error: '이미지 업로드에 실패했습니다.',
+            details: [detail, hint].filter(Boolean).join(' '),
+          },
+          { status: 500 }
+        );
+      }
     }
-
-    console.log('[OCR] Upload successful:', uploadData?.path);
 
     // 3. 업로드된 이미지의 Signed URL 생성 (짧은 만료)
     const { data: signedData, error: signedError } = await supabase.storage
@@ -337,9 +361,24 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Google Cloud Vision API로 텍스트 추출
-    const vision = getVisionClient();
-    const [result] = await vision.textDetection(buffer);
-    const detections = result.textAnnotations;
+    // 인식이 실패해도 업로드된 이미지는 보존해야 하므로 경로를 함께 반환한다
+    let detections;
+    try {
+      const vision = getVisionClient();
+      const [result] = await vision.textDetection(buffer);
+      detections = result.textAnnotations;
+    } catch (visionError) {
+      console.error('Vision OCR 실패:', visionError);
+      const message =
+        visionError instanceof Error && /billing/i.test(visionError.message)
+          ? 'OCR 서비스(Google Vision) 결제 설정이 비활성화되어 있습니다. 이미지는 저장되었으니 정보는 직접 입력해주세요.'
+          : 'OCR 인식에 실패했습니다. 이미지는 저장되었으니 정보는 직접 입력해주세요.';
+      return NextResponse.json({
+        imageUrl,
+        imagePath: filePath,
+        error: message,
+      });
+    }
 
     if (!detections || detections.length === 0) {
       console.log('텍스트를 찾을 수 없습니다.');
@@ -356,13 +395,13 @@ export async function POST(request: NextRequest) {
     // 5. 타입에 따라 정보 추출
     const extractedData: any = { imageUrl, imagePath: filePath };
 
-    if (type === 'id_card') {
+    if (ocrType === 'id_card') {
       // 신분증에서 주민등록번호 추출
       const residentNumber = extractResidentNumber(fullText);
       if (residentNumber) {
         extractedData.residentNumber = residentNumber;
       }
-    } else if (type === 'bankbook') {
+    } else if (ocrType === 'bankbook') {
       // 통장에서 은행명과 계좌번호 추출
       const bankName = extractBankName(fullText);
       const accountNumber = extractAccountNumber(fullText);

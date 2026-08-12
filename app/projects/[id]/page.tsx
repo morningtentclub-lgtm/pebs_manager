@@ -106,7 +106,11 @@ export default function ProjectDetailPage() {
   const [editingCardAlias, setEditingCardAlias] = useState('');
 
   const [ocrProcessing, setOcrProcessing] = useState(false);
-  const [ocrFiles, setOcrFiles] = useState<{ file: File; previewUrl: string }[]>([]);
+  const [ocrFiles, setOcrFiles] = useState<
+    { file: File; previewUrl: string; storagePath?: string; status: 'uploading' | 'stored' | 'error' }[]
+  >([]);
+  // 이번 폼 세션에서 새로 업로드한 스토리지 경로 (취소 시 정리용)
+  const sessionUploadsRef = useRef<Set<string>>(new Set());
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
   const [ocrWarnings, setOcrWarnings] = useState<string[]>([]);
   const ocrFilesRef = useRef(ocrFiles);
@@ -298,6 +302,50 @@ export default function ProjectDetailPage() {
     entries.forEach((entry) => URL.revokeObjectURL(entry.previewUrl));
   };
 
+  // 업로드 완료된 이미지를 비어 있는 사본 슬롯(신분증 → 통장 순)에 연결한다
+  const linkPathToEmptySlot = (path: string) => {
+    setNewPayment((prev) => {
+      if (prev.id_card_url === path || prev.bankbook_url === path) return prev;
+      if (!prev.id_card_url) return { ...prev, id_card_url: path };
+      if (!prev.bankbook_url) return { ...prev, bankbook_url: path };
+      return prev;
+    });
+  };
+
+  const uploadOcrEntry = async (previewUrl: string, file: File) => {
+    try {
+      const accessToken = await getAccessToken();
+      const formData = new FormData();
+      formData.append('image', file);
+      const response = await fetch('/api/payment-images/upload', {
+        method: 'POST',
+        body: formData,
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.imagePath) {
+        throw new Error(data.error || '이미지 업로드에 실패했습니다.');
+      }
+      sessionUploadsRef.current.add(data.imagePath);
+      setOcrFiles((prev) =>
+        prev.map((entry) =>
+          entry.previewUrl === previewUrl
+            ? { ...entry, storagePath: data.imagePath, status: 'stored' as const }
+            : entry
+        )
+      );
+      linkPathToEmptySlot(data.imagePath);
+    } catch (error) {
+      setOcrFiles((prev) =>
+        prev.map((entry) =>
+          entry.previewUrl === previewUrl ? { ...entry, status: 'error' as const } : entry
+        )
+      );
+      const message = error instanceof Error ? error.message : '이미지 업로드에 실패했습니다.';
+      setOcrWarnings((prev) => [...prev, `${file.name}: ${message}`]);
+    }
+  };
+
   const addOcrFiles = (files: File[]) => {
     const imageFiles = files.filter((file) => file.type.startsWith('image/'));
     if (files.length > 0 && imageFiles.length === 0) {
@@ -305,29 +353,20 @@ export default function ProjectDetailPage() {
       return;
     }
 
-    if (imageFiles.length > 0) {
-      setNewPayment((prev) => ({
-        ...prev,
-        resident_number: '',
-        bank_name: '',
-        account_number: '',
-        id_card_url: '',
-        bankbook_url: ''
-      }));
-      setOcrWarnings([]);
-    }
-
     const maxFiles = 10;
-    setOcrFiles((prev) => {
-      const remaining = Math.max(0, maxFiles - prev.length);
-      const nextFiles = imageFiles.slice(0, remaining).map((file) => ({
-        file,
-        previewUrl: URL.createObjectURL(file),
-      }));
-      if (imageFiles.length > remaining) {
-        alert(`최대 ${maxFiles}장까지 업로드할 수 있습니다.`);
-      }
-      return [...prev, ...nextFiles];
+    const remaining = Math.max(0, maxFiles - ocrFilesRef.current.length);
+    const nextFiles = imageFiles.slice(0, remaining).map((file) => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      status: 'uploading' as const,
+    }));
+    if (imageFiles.length > remaining) {
+      alert(`최대 ${maxFiles}장까지 업로드할 수 있습니다.`);
+    }
+    setOcrFiles((prev) => [...prev, ...nextFiles]);
+    // 추가 즉시 스토리지에 업로드하고 빈 사본 슬롯에 연결 (OCR은 선택)
+    nextFiles.forEach((entry) => {
+      void uploadOcrEntry(entry.previewUrl, entry.file);
     });
   };
 
@@ -338,9 +377,49 @@ export default function ProjectDetailPage() {
     });
     setOcrWarnings([]);
     setPreviewImage(null);
+    sessionUploadsRef.current = new Set();
+  };
+
+  // 이번 세션에서 업로드했지만 저장 대상이 아닌 파일을 스토리지에서 정리한다
+  const cleanupSessionUploads = async (keepPaths: (string | null | undefined)[]) => {
+    const keep = new Set(keepPaths.filter(Boolean));
+    const targets = [...sessionUploadsRef.current].filter((path) => !keep.has(path));
+    sessionUploadsRef.current = new Set();
+    if (targets.length === 0) return;
+    try {
+      await removeStoredImages(targets);
+    } catch (error) {
+      console.error('임시 업로드 정리 실패:', error);
+    }
+  };
+
+  // 취소/전체 제거: 이번 세션 업로드를 스토리지에서 지우고 슬롯 연결도 해제
+  const discardSessionUploads = () => {
+    const paths = new Set(sessionUploadsRef.current);
+    setNewPayment((prev) => ({
+      ...prev,
+      id_card_url: prev.id_card_url && paths.has(prev.id_card_url) ? '' : prev.id_card_url,
+      bankbook_url: prev.bankbook_url && paths.has(prev.bankbook_url) ? '' : prev.bankbook_url,
+    }));
+    void cleanupSessionUploads([]);
+    clearOcrFiles();
   };
 
   const removeOcrFile = (index: number) => {
+    const target = ocrFiles[index];
+    if (!target) return;
+    if (target.storagePath) {
+      const path = target.storagePath;
+      sessionUploadsRef.current.delete(path);
+      setNewPayment((prev) => ({
+        ...prev,
+        id_card_url: prev.id_card_url === path ? '' : prev.id_card_url,
+        bankbook_url: prev.bankbook_url === path ? '' : prev.bankbook_url,
+      }));
+      removeStoredImages([path]).catch((error) => {
+        console.error('업로드 이미지 삭제 실패:', error);
+      });
+    }
     setOcrFiles((prev) => {
       if (index < 0 || index >= prev.length) return prev;
       const next = [...prev];
@@ -630,18 +709,33 @@ export default function ProjectDetailPage() {
     }
   };
 
-  const requestOcr = async (file: File, accessToken: string) => {
-    const formData = new FormData();
-    formData.append('image', file);
-    formData.append('type', 'auto');
-
-    const response = await fetch('/api/ocr', {
-      method: 'POST',
-      body: formData,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
+  const requestOcr = async (
+    entry: { file: File; storagePath?: string },
+    accessToken: string
+  ) => {
+    let response: Response;
+    if (entry.storagePath) {
+      // 이미 업로드된 이미지는 경로만 보내 인식한다 (재업로드 방지)
+      response = await fetch('/api/ocr', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ imagePath: entry.storagePath }),
+      });
+    } else {
+      const formData = new FormData();
+      formData.append('image', entry.file);
+      formData.append('type', 'auto');
+      response = await fetch('/api/ocr', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+    }
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -674,16 +768,132 @@ export default function ProjectDetailPage() {
         next.account_number = data.accountNumber;
       }
       if (data.imagePath) {
-        if (data.residentNumber && !prev.id_card_url) {
-          next.id_card_url = data.imagePath;
-        }
-        if ((data.bankName || data.accountNumber) && !prev.bankbook_url) {
-          next.bankbook_url = data.imagePath;
+        const path = data.imagePath;
+        const isIdCard = Boolean(data.residentNumber);
+        const isBankbook = Boolean(data.bankName || data.accountNumber);
+
+        if (isIdCard && !isBankbook) {
+          // 신분증으로 판별: 업로드 순서 때문에 통장 슬롯에 있으면 이동/교환
+          if (next.id_card_url !== path) {
+            if (!next.id_card_url) {
+              if (next.bankbook_url === path) next.bankbook_url = '';
+              next.id_card_url = path;
+            } else if (next.bankbook_url === path) {
+              const other = next.id_card_url;
+              next.id_card_url = path;
+              next.bankbook_url = other;
+            }
+          }
+        } else if (isBankbook && !isIdCard) {
+          if (next.bankbook_url !== path) {
+            if (!next.bankbook_url) {
+              if (next.id_card_url === path) next.id_card_url = '';
+              next.bankbook_url = path;
+            } else if (next.id_card_url === path) {
+              const other = next.bankbook_url;
+              next.bankbook_url = path;
+              next.id_card_url = other;
+            }
+          }
+        } else if (isIdCard && isBankbook) {
+          // 한 장에 둘 다: 빈 슬롯 모두 채움
+          if (!next.id_card_url) next.id_card_url = path;
+          if (!next.bankbook_url) next.bankbook_url = path;
+        } else {
+          // 인식 실패한 이미지도 버리지 않고 비어 있는 사본 슬롯에 연결해 보관한다
+          if (next.id_card_url !== path && next.bankbook_url !== path) {
+            if (!next.id_card_url) next.id_card_url = path;
+            else if (!next.bankbook_url) next.bankbook_url = path;
+          }
         }
       }
 
       return next;
     });
+  };
+
+  const getAccessToken = async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      throw new Error('로그인이 필요합니다.');
+    }
+    return accessToken;
+  };
+
+  // 과거 데이터에 서명 URL 전체가 저장된 경우를 대비해 스토리지 경로만 추출
+  const toStoragePath = (value: string) => {
+    if (!value || !value.startsWith('http')) return value;
+    const match = value.match(/payment-images\/([^?]+)/);
+    return match ? decodeURIComponent(match[1]) : value;
+  };
+
+  const openStoredImage = async (rawPath: string, label: string) => {
+    const path = toStoragePath(rawPath);
+    try {
+      const accessToken = await getAccessToken();
+      const response = await fetch('/api/payment-images', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ path }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.url) {
+        throw new Error(data.error || '이미지를 불러오지 못했습니다.');
+      }
+      setPreviewImage({ url: data.url, name: label });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '이미지를 불러오지 못했습니다.';
+      alert(message);
+    }
+  };
+
+  const removeStoredImages = async (paths: string[]) => {
+    const targets = paths.filter(Boolean).map(toStoragePath);
+    if (targets.length === 0) return;
+    const accessToken = await getAccessToken();
+    const response = await fetch('/api/payment-images', {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ paths: targets }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || '이미지 삭제에 실패했습니다.');
+    }
+  };
+
+  const unlinkSavedCopy = async (kind: 'id_card' | 'bankbook') => {
+    const label = kind === 'id_card' ? '신분증 사본' : '통장 사본';
+    const path = kind === 'id_card' ? newPayment.id_card_url : newPayment.bankbook_url;
+    if (!path) return;
+    if (!confirm(`${label}을 스토리지에서 삭제할까요? 되돌릴 수 없습니다.`)) return;
+
+    try {
+      await removeStoredImages([path]);
+      sessionUploadsRef.current.delete(path);
+      setNewPayment((prev) => ({
+        ...prev,
+        [kind === 'id_card' ? 'id_card_url' : 'bankbook_url']: '',
+      }));
+      if (editingPaymentId) {
+        // 수정 도중 취소하더라도 삭제된 파일을 가리키지 않도록 DB도 바로 비운다
+        await supabase
+          .from('payments')
+          .update({ [kind === 'id_card' ? 'id_card_url' : 'bankbook_url']: null })
+          .eq('id', editingPaymentId);
+        fetchData();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '이미지 삭제에 실패했습니다.';
+      alert(message);
+    }
   };
 
   const applyRecipientData = (payment: RecipientCandidate) => {
@@ -956,7 +1166,7 @@ export default function ProjectDetailPage() {
 
       for (const entry of ocrFiles) {
         try {
-          const data = await requestOcr(entry.file, accessToken);
+          const data = await requestOcr(entry, accessToken);
           applyOcrData(data);
           if (data.bankName) {
             if (bankOptions.includes(data.bankName)) {
@@ -1031,6 +1241,7 @@ export default function ProjectDetailPage() {
 
       if (error) throw error;
 
+      void cleanupSessionUploads([payload.id_card_url, payload.bankbook_url]);
       setShowPaymentForm(false);
       setEditingPaymentId(null);
       setNewPayment({ ...emptyPayment });
@@ -1078,6 +1289,7 @@ export default function ProjectDetailPage() {
 
       if (error) throw error;
 
+      void cleanupSessionUploads([payload.id_card_url, payload.bankbook_url]);
       setShowPaymentForm(false);
       setEditingPaymentId(null);
       setNewPayment({ ...emptyPayment });
@@ -1483,15 +1695,27 @@ export default function ProjectDetailPage() {
   };
 
   const deletePayment = async (paymentId: string) => {
-    if (!confirm('정말 삭제하시겠습니까?')) return;
+    if (!confirm('정말 삭제하시겠습니까? 저장된 신분증/통장 사본도 함께 삭제됩니다.')) return;
 
     try {
+      const target = payments.find((payment) => payment.id === paymentId);
       const { error } = await supabase
         .from('payments')
         .delete()
         .eq('id', paymentId);
 
       if (error) throw error;
+
+      const imagePaths = [target?.id_card_url, target?.bankbook_url].filter(
+        (path): path is string => Boolean(path)
+      );
+      if (imagePaths.length > 0) {
+        try {
+          await removeStoredImages(imagePaths);
+        } catch (storageError) {
+          console.error('사본 이미지 삭제 실패:', storageError);
+        }
+      }
       fetchData();
     } catch (error) {
       console.error('삭제 실패:', error);
@@ -1745,6 +1969,38 @@ export default function ProjectDetailPage() {
                                 <div>{payment.recipient || '-'}</div>
                                 {payment.company_name && (
                                   <div className="text-[11px] text-gray-500">{payment.company_name}</div>
+                                )}
+                                {(payment.id_card_url || payment.bankbook_url) && (
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {payment.id_card_url && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          openStoredImage(
+                                            payment.id_card_url!,
+                                            `${payment.recipient || '지급 건'} 신분증 사본`
+                                          )
+                                        }
+                                        className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[11px] text-gray-600 hover:border-gray-400"
+                                      >
+                                        신분증
+                                      </button>
+                                    )}
+                                    {payment.bankbook_url && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          openStoredImage(
+                                            payment.bankbook_url!,
+                                            `${payment.recipient || '지급 건'} 통장 사본`
+                                          )
+                                        }
+                                        className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[11px] text-gray-600 hover:border-gray-400"
+                                      >
+                                        통장
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
                               </td>
                               <td className="px-3 py-3 text-[13px] text-gray-900">
@@ -2362,7 +2618,7 @@ export default function ProjectDetailPage() {
                   </div>
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-[--gray-700] mb-2">
-                      신분증/통장 업로드 (OCR 자동 인식)
+                      신분증/통장 업로드
                     </label>
                     <div
                       className="border border-dashed border-[--border-dark] bg-[--gray-50] rounded-xl p-4 hover:border-[--primary] transition-colors cursor-default"
@@ -2375,8 +2631,8 @@ export default function ProjectDetailPage() {
                     >
                       <div className="text-sm text-[--gray-600]">
                         <p>드래그&드롭 또는 붙여넣기(Cmd/Ctrl+V)</p>
-                        <p className="mt-1 text-xs text-[--gray-500]">여러 장 업로드 가능 (최대 10장)</p>
-                        <p className="mt-1 text-xs text-[--gray-500]">미리보기 클릭 시 크게 보기</p>
+                        <p className="mt-1 text-xs text-[--gray-500]">업로드 즉시 저장되어 아래 사본 목록에 연결됩니다</p>
+                        <p className="mt-1 text-xs text-[--gray-500]">여러 장 업로드 가능 (최대 10장) · 미리보기 클릭 시 크게 보기</p>
                       </div>
                       {ocrFiles.length > 0 && (
                         <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -2397,6 +2653,17 @@ export default function ProjectDetailPage() {
                                 />
                               </button>
                               <p className="mt-2 text-xs text-[--gray-700] truncate">{entry.file.name}</p>
+                              <p className="text-[11px] text-[--gray-500]">
+                                {entry.status === 'uploading'
+                                  ? '업로드 중...'
+                                  : entry.status === 'error'
+                                    ? '업로드 실패'
+                                    : entry.storagePath === newPayment.id_card_url
+                                      ? '신분증 슬롯에 연결됨'
+                                      : entry.storagePath === newPayment.bankbook_url
+                                        ? '통장 슬롯에 연결됨'
+                                        : '미연결 (슬롯이 가득 참)'}
+                              </p>
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -2424,7 +2691,7 @@ export default function ProjectDetailPage() {
                       {ocrFiles.length > 0 && (
                         <button
                           type="button"
-                          onClick={clearOcrFiles}
+                          onClick={discardSessionUploads}
                           className="btn-outline px-4 py-2 rounded-xl text-sm"
                         >
                           전체 제거
@@ -2442,6 +2709,55 @@ export default function ProjectDetailPage() {
                             <li key={`${warning}-${index}`}>{warning}</li>
                           ))}
                         </ul>
+                      </div>
+                    )}
+                    {(newPayment.id_card_url || newPayment.bankbook_url) && (
+                      <div className="mt-3 rounded-lg border border-[--border] bg-white p-3">
+                        <div className="text-xs font-semibold text-[--gray-700]">저장된 사본</div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {newPayment.id_card_url && (
+                            <div className="flex items-center gap-1.5 rounded-lg border border-[--border] bg-[--gray-50] px-2.5 py-1.5 text-xs text-[--gray-700]">
+                              <span className="font-medium">신분증 사본</span>
+                              <button
+                                type="button"
+                                onClick={() => openStoredImage(newPayment.id_card_url, '신분증 사본')}
+                                className="text-[--primary] hover:underline"
+                              >
+                                보기
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => unlinkSavedCopy('id_card')}
+                                className="text-red-500 hover:underline"
+                              >
+                                삭제
+                              </button>
+                            </div>
+                          )}
+                          {newPayment.bankbook_url && (
+                            <div className="flex items-center gap-1.5 rounded-lg border border-[--border] bg-[--gray-50] px-2.5 py-1.5 text-xs text-[--gray-700]">
+                              <span className="font-medium">통장 사본</span>
+                              <button
+                                type="button"
+                                onClick={() => openStoredImage(newPayment.bankbook_url, '통장 사본')}
+                                className="text-[--primary] hover:underline"
+                              >
+                                보기
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => unlinkSavedCopy('bankbook')}
+                                className="text-red-500 hover:underline"
+                              >
+                                삭제
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <p className="mt-2 text-[11px] text-[--gray-500]">
+                          업로드하면 바로 연결되며, 지급 항목을 저장해야 확정됩니다. &apos;인식&apos;을 누르면
+                          주민등록번호·계좌번호가 자동 입력되고 신분증/통장 슬롯도 자동 정정됩니다.
+                        </p>
                       </div>
                     )}
                   </div>
@@ -2472,7 +2788,7 @@ export default function ProjectDetailPage() {
                   setRecipientLookupLoading(false);
                   setPaymentErrors({});
                   setOcrWarnings([]);
-                  clearOcrFiles();
+                  discardSessionUploads();
                   setPreviewImage(null);
                 }}
                 className="btn-outline flex-1 px-4 py-2 rounded-xl text-sm"
