@@ -27,6 +27,7 @@ const NAME_OPTIONS = [
   '안재형',
   '황현지',
   '이일주',
+  '정세희',
 ];
 
 const formatAmount = (value: string) => {
