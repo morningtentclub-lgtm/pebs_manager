@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Project } from '@/lib/types';
 import Link from 'next/link';
+import ExportModal from '@/components/ExportModal';
+import ProjectCard from '@/components/ProjectCard';
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -13,6 +15,9 @@ export default function Home() {
   const [sortMode, setSortMode] = useState<'recent' | 'year-month'>('recent');
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [newProject, setNewProject] = useState({ name: '', client: '' });
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showExportModal, setShowExportModal] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -106,36 +111,46 @@ export default function Home() {
       });
   }, [filteredProjects]);
 
+  const toggleSelected = (projectId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      return next;
+    });
+  };
+
   const renderProjectCard = (project: Project) => (
-    <Link
+    <ProjectCard
       key={project.id}
-      href={`/projects/${project.id}`}
-      className="group bg-white rounded-lg border border-[--border] hover:border-black transition-all p-6"
-    >
-      <div className="flex items-start justify-between mb-3">
-        <h3 className="text-[16px] font-bold flex-1 group-hover:underline">{project.name}</h3>
-        <span className={`ml-2 px-2.5 py-1 text-[11px] font-bold rounded ${
-          project.status === 'completed'
-            ? 'bg-green-50 text-[--success]'
-            : 'bg-red-50 text-[--accent]'
-        }`}>
-          {project.status === 'completed' ? '완료' : '진행 중'}
-        </span>
-      </div>
-
-      {project.client && (
-        <div className="text-[14px] text-gray-600 mb-3">{project.client}</div>
-      )}
-
-      <div className="text-[13px] text-gray-400">
-        {new Date(project.created_at).toLocaleDateString('ko-KR', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        })}
-      </div>
-    </Link>
+      project={project}
+      selectionMode={selectionMode}
+      selected={selectedIds.has(project.id)}
+      onToggle={toggleSelected}
+    />
   );
+
+  const visibleIds = useMemo(() => filteredProjects.map((project) => project.id), [filteredProjects]);
+  const selectedVisibleCount = visibleIds.filter((id) => selectedIds.has(id)).length;
+  const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+
+  const toggleSelectAllVisible = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visibleIds.forEach((id) => next.delete(id));
+      else visibleIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const selectedProjects = projects
+    .filter((project) => selectedIds.has(project.id))
+    .map((project) => ({ id: project.id, name: project.name }));
 
   const stats = {
     total: projects.length,
@@ -179,6 +194,16 @@ export default function Home() {
                   지급 내역 리스트
                 </Link>
                 <button
+                  onClick={() => (selectionMode ? exitSelectionMode() : setSelectionMode(true))}
+                  className={`px-6 py-3 text-[14px] font-semibold rounded-lg border-2 transition-colors ${
+                    selectionMode
+                      ? 'bg-[#217346] text-white border-[#217346] hover:bg-[#1a5c38]'
+                      : 'bg-white text-[#217346] border-[#217346] hover:bg-[#EAF3EE]'
+                  }`}
+                >
+                  {selectionMode ? '선택 취소' : '파일출력(.xlsx)'}
+                </button>
+                <button
                   onClick={() => setShowNewProjectForm(true)}
                   className="px-6 py-3 bg-black text-white text-[14px] font-semibold rounded-lg hover:bg-[--primary-light] transition-colors"
                 >
@@ -194,7 +219,18 @@ export default function Home() {
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Filters */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
+            {selectionMode && (
+              <label className="flex items-center gap-2 text-[13px] font-semibold text-gray-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={toggleSelectAllVisible}
+                  className="h-4 w-4 rounded border-[--border-dark] accent-black cursor-pointer"
+                />
+                전체 선택
+              </label>
+            )}
             <label className="text-[13px] font-semibold text-gray-600">정렬 기준</label>
             <select
               value={sortMode}
@@ -265,6 +301,40 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* 선택 바 — 선택 모드 동안 계속 떠 있어서 빠져나갈 곳이 항상 보인다 */}
+      {selectionMode && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-4 rounded-full bg-black text-white pl-6 pr-3 py-3 shadow-xl">
+          <span className="text-[14px] font-semibold whitespace-nowrap">
+            {selectedIds.size > 0 ? `${selectedIds.size}개 선택됨` : '출력할 프로젝트를 선택하세요'}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={exitSelectionMode}
+              className="px-3 py-2 text-[13px] font-medium text-gray-300 hover:text-white transition-colors"
+            >
+              취소
+            </button>
+            <button
+              onClick={() => setShowExportModal(true)}
+              disabled={selectedIds.size === 0}
+              className="px-5 py-2 text-[14px] font-semibold bg-[#217346] text-white rounded-full hover:bg-[#1a5c38] transition-colors whitespace-nowrap disabled:opacity-40 disabled:hover:bg-[#217346]"
+            >
+              파일출력(.xlsx)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showExportModal && selectedProjects.length > 0 && (
+        <ExportModal
+          projects={selectedProjects}
+          onClose={() => {
+            setShowExportModal(false);
+            exitSelectionMode();
+          }}
+        />
+      )}
 
       {/* New Project Modal */}
       {showNewProjectForm && (

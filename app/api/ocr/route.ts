@@ -369,14 +369,22 @@ export async function POST(request: NextRequest) {
       detections = result.textAnnotations;
     } catch (visionError) {
       console.error('Vision OCR 실패:', visionError);
-      const message =
-        visionError instanceof Error && /billing/i.test(visionError.message)
-          ? 'OCR 서비스(Google Vision) 결제 설정이 비활성화되어 있습니다. 이미지는 저장되었으니 정보는 직접 입력해주세요.'
-          : 'OCR 인식에 실패했습니다. 이미지는 저장되었으니 정보는 직접 입력해주세요.';
+      const detail = visionError instanceof Error ? visionError.message : '';
+      let message: string;
+      if (/billing/i.test(detail)) {
+        message =
+          'OCR 서비스(Google Vision) 결제 설정이 비활성화되어 있습니다. 이미지는 저장되었으니 정보는 직접 입력해주세요.';
+      } else if (/GOOGLE_APPLICATION_CREDENTIALS|키 파일을 찾을 수 없습니다|Could not load the default credentials/i.test(detail)) {
+        // 배포 환경에 자격 증명이 없을 때 원인을 바로 알 수 있도록 그대로 노출한다
+        message = `OCR 서비스 인증 설정이 없습니다: ${detail} 이미지는 저장되었으니 정보는 직접 입력해주세요.`;
+      } else {
+        message = 'OCR 인식에 실패했습니다. 이미지는 저장되었으니 정보는 직접 입력해주세요.';
+      }
       return NextResponse.json({
         imageUrl,
         imagePath: filePath,
         error: message,
+        details: detail || undefined,
       });
     }
 

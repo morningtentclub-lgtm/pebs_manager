@@ -6,8 +6,8 @@ import { supabase } from '@/lib/supabase';
 import { Payment, PaymentMethod, Project, StaffType } from '@/lib/types';
 import InlineDateField from '@/components/InlineDateField';
 import StatusToggle from '@/components/StatusToggle';
+import { getActualAmountFromBase, parsePaymentMemoMeta } from '@/lib/paymentAmount';
 
-const PAYMENT_AMOUNT_MODE_PREFIX = '[[pebs_amount_mode:actual]]';
 
 type SortMode = 'project' | 'recipient' | 'updated' | 'staff' | 'method';
 type ViewStatus = 'pending' | 'completed';
@@ -40,38 +40,6 @@ const normalizePaymentStatus = (value: string | null) => {
   return 'pending';
 };
 
-const parsePaymentMemoMeta = (memo: string | null | undefined) => {
-  if (!memo) {
-    return { amountMode: 'supply' as const, displayMemo: '' };
-  }
-  if (memo.startsWith(PAYMENT_AMOUNT_MODE_PREFIX)) {
-    const displayMemo = memo
-      .slice(PAYMENT_AMOUNT_MODE_PREFIX.length)
-      .replace(/^\n/, '');
-    return { amountMode: 'actual' as const, displayMemo };
-  }
-  return { amountMode: 'supply' as const, displayMemo: memo };
-};
-
-const getActualAmountFromBase = (baseAmount: number, methodName: string) => {
-  if (methodName === '세금계산서') {
-    return Math.round(baseAmount * 1.1);
-  }
-  if (methodName === '원천징수') {
-    return Math.round(baseAmount * 0.967);
-  }
-  return baseAmount;
-};
-
-const getBaseAmountFromActual = (actualAmount: number, methodName: string) => {
-  if (methodName === '세금계산서') {
-    return Math.round(actualAmount / 1.1);
-  }
-  if (methodName === '원천징수') {
-    return Math.round(actualAmount / 0.967);
-  }
-  return actualAmount;
-};
 
 export default function PaymentListPage() {
   const [payments, setPayments] = useState<PaymentListItem[]>([]);

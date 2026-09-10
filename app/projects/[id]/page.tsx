@@ -7,8 +7,19 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import InlineDateField from '@/components/InlineDateField';
 import StatusToggle from '@/components/StatusToggle';
+import { compressImageFile } from '@/lib/imageCompress';
+import ExportModal from '@/components/ExportModal';
+import {
+  PAYMENT_AMOUNT_MODE_PREFIX,
+  buildPaymentMemo,
+  getActualAmountFromBase,
+  parsePaymentMemoMeta,
+} from '@/lib/paymentAmount';
 
-const PAYMENT_AMOUNT_MODE_PREFIX = '[[pebs_amount_mode:actual]]';
+// Vercel 서버리스 함수의 요청 본문 한도(4.5MB). 이보다 큰 파일은 API 라우트를
+// 거치지 않고 스토리지로 직접 올린다.
+const API_UPLOAD_LIMIT_BYTES = 4 * 1024 * 1024;
+const PAYMENT_IMAGE_BUCKET = 'payment-images';
 
 export default function ProjectDetailPage() {
   const params = useParams();
@@ -46,6 +57,7 @@ export default function ProjectDetailPage() {
   const [useCustomBank, setUseCustomBank] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [showProjectEditForm, setShowProjectEditForm] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [paymentAmountMode, setPaymentAmountMode] = useState<'supply' | 'actual'>('supply');
   const [paymentCurrency, setPaymentCurrency] = useState<'KRW' | 'USD'>('KRW');
   const [expenseCurrency, setExpenseCurrency] = useState<'KRW' | 'USD'>('KRW');
@@ -107,7 +119,14 @@ export default function ProjectDetailPage() {
 
   const [ocrProcessing, setOcrProcessing] = useState(false);
   const [ocrFiles, setOcrFiles] = useState<
-    { file: File; previewUrl: string; storagePath?: string; status: 'uploading' | 'stored' | 'error' }[]
+    {
+      file: File;
+      /** 축소·재인코딩을 거친 업로드/OCR 전송용 파일 (원본이 작으면 file과 동일) */
+      uploadFile?: File;
+      previewUrl: string;
+      storagePath?: string;
+      status: 'uploading' | 'stored' | 'error';
+    }[]
   >([]);
   // 이번 폼 세션에서 새로 업로드한 스토리지 경로 (취소 시 정리용)
   const sessionUploadsRef = useRef<Set<string>>(new Set());
@@ -143,51 +162,6 @@ export default function ProjectDetailPage() {
       return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
     }
     return value.replace(/[^0-9]/g, '');
-  };
-
-  const parsePaymentMemoMeta = (memo: string | null | undefined) => {
-    if (!memo) {
-      return { amountMode: 'supply' as const, displayMemo: '' };
-    }
-
-    if (memo.startsWith(PAYMENT_AMOUNT_MODE_PREFIX)) {
-      const displayMemo = memo
-        .slice(PAYMENT_AMOUNT_MODE_PREFIX.length)
-        .replace(/^\n/, '');
-      return { amountMode: 'actual' as const, displayMemo };
-    }
-
-    return { amountMode: 'supply' as const, displayMemo: memo };
-  };
-
-  const buildPaymentMemo = (displayMemo: string, amountMode: 'supply' | 'actual') => {
-    const trimmedMemo = displayMemo.trim();
-    if (amountMode === 'actual') {
-      return trimmedMemo
-        ? `${PAYMENT_AMOUNT_MODE_PREFIX}\n${trimmedMemo}`
-        : PAYMENT_AMOUNT_MODE_PREFIX;
-    }
-    return trimmedMemo;
-  };
-
-  const getActualAmountFromBase = (baseAmount: number, methodName: string) => {
-    if (methodName === '세금계산서') {
-      return Math.round(baseAmount * 1.1);
-    }
-    if (methodName === '원천징수') {
-      return Math.round(baseAmount * 0.967);
-    }
-    return baseAmount;
-  };
-
-  const getBaseAmountFromActual = (actualAmount: number, methodName: string) => {
-    if (methodName === '세금계산서') {
-      return Math.round(actualAmount / 1.1);
-    }
-    if (methodName === '원천징수') {
-      return Math.round(actualAmount / 0.967);
-    }
-    return actualAmount;
   };
 
   const formatAccountPreview = (value: string | null) => {
@@ -312,29 +286,64 @@ export default function ProjectDetailPage() {
     });
   };
 
+  // 본문 한도를 넘는 파일은 인증된 세션으로 스토리지에 바로 올린다 (RLS: authenticated)
+  const uploadViaStorage = async (file: File) => {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    const safeExt = ext && ext.length <= 10 ? ext : 'bin';
+    const suffix = Math.random().toString(36).slice(2, 8);
+    const filePath = `uploads/auto_${Date.now()}_${suffix}.${safeExt}`;
+
+    const { error } = await supabase.storage
+      .from(PAYMENT_IMAGE_BUCKET)
+      .upload(filePath, file, { contentType: file.type || 'image/jpeg', upsert: false });
+
+    if (error) {
+      throw new Error(error.message || '이미지 업로드에 실패했습니다.');
+    }
+    return filePath;
+  };
+
+  const uploadImageFile = async (file: File, accessToken: string) => {
+    if (file.size > API_UPLOAD_LIMIT_BYTES) {
+      return uploadViaStorage(file);
+    }
+
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await fetch('/api/payment-images/upload', {
+      method: 'POST',
+      body: formData,
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    // 플랫폼이 본문 크기로 끊은 경우 응답이 JSON이 아니므로 먼저 처리한다
+    if (response.status === 413) {
+      return uploadViaStorage(file);
+    }
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.imagePath) {
+      throw new Error(data?.error || `이미지 업로드에 실패했습니다. (status ${response.status})`);
+    }
+    return data.imagePath as string;
+  };
+
   const uploadOcrEntry = async (previewUrl: string, file: File) => {
     try {
       const accessToken = await getAccessToken();
-      const formData = new FormData();
-      formData.append('image', file);
-      const response = await fetch('/api/payment-images/upload', {
-        method: 'POST',
-        body: formData,
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.imagePath) {
-        throw new Error(data.error || '이미지 업로드에 실패했습니다.');
-      }
-      sessionUploadsRef.current.add(data.imagePath);
+      // 폰 사진은 그대로 보내면 요청 본문 한도에 걸리므로 브라우저에서 먼저 줄인다
+      const { file: uploadFile } = await compressImageFile(file);
+      const imagePath = await uploadImageFile(uploadFile, accessToken);
+
+      sessionUploadsRef.current.add(imagePath);
       setOcrFiles((prev) =>
         prev.map((entry) =>
           entry.previewUrl === previewUrl
-            ? { ...entry, storagePath: data.imagePath, status: 'stored' as const }
+            ? { ...entry, uploadFile, storagePath: imagePath, status: 'stored' as const }
             : entry
         )
       );
-      linkPathToEmptySlot(data.imagePath);
+      linkPathToEmptySlot(imagePath);
     } catch (error) {
       setOcrFiles((prev) =>
         prev.map((entry) =>
@@ -710,7 +719,7 @@ export default function ProjectDetailPage() {
   };
 
   const requestOcr = async (
-    entry: { file: File; storagePath?: string },
+    entry: { file: File; uploadFile?: File; storagePath?: string },
     accessToken: string
   ) => {
     let response: Response;
@@ -725,8 +734,12 @@ export default function ProjectDetailPage() {
         body: JSON.stringify({ imagePath: entry.storagePath }),
       });
     } else {
+      // 업로드가 실패해 경로가 없는 경우: 축소본이 있으면 그것으로 보낸다
+      const { file: ocrFile } = entry.uploadFile
+        ? { file: entry.uploadFile }
+        : await compressImageFile(entry.file);
       const formData = new FormData();
-      formData.append('image', entry.file);
+      formData.append('image', ocrFile);
       formData.append('type', 'auto');
       response = await fetch('/api/ocr', {
         method: 'POST',
@@ -1807,6 +1820,12 @@ export default function ProjectDetailPage() {
                 <option value="ongoing">진행중</option>
                 <option value="completed">완료</option>
               </select>
+              <button
+                onClick={() => setShowExportModal(true)}
+                className="px-4 py-2 text-[14px] bg-white border-2 border-[#217346] text-[#217346] font-semibold rounded-lg hover:bg-[#EAF3EE] transition-all"
+              >
+                파일출력(.xlsx)
+              </button>
               <button
                 onClick={openProjectEditForm}
                 className="px-4 py-2 text-[14px] bg-white border border-gray-200 text-gray-700 font-semibold rounded-lg hover:border-black transition-all"
@@ -3211,6 +3230,13 @@ export default function ProjectDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showExportModal && project && (
+        <ExportModal
+          projects={[{ id: projectId, name: project.name }]}
+          onClose={() => setShowExportModal(false)}
+        />
       )}
     </div>
   );
