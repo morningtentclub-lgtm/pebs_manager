@@ -28,6 +28,7 @@ const NAME_OPTIONS = [
   '황현지',
   '이일주',
   '정세희',
+  '이재진',
 ];
 
 const formatAmount = (value: string) => {
