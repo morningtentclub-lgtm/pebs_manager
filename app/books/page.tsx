@@ -59,6 +59,8 @@ export default function BookSupportPage() {
   const [listError, setListError] = useState('');
   const [monthlyTotal, setMonthlyTotal] = useState<number | null>(null);
   const [sortMode, setSortMode] = useState<'updated' | 'requester'>('updated');
+  const [selectedRequester, setSelectedRequester] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [editingPurchaseId, setEditingPurchaseId] = useState<string | null>(null);
 
@@ -281,11 +283,55 @@ export default function BookSupportPage() {
     fetchPurchases();
   };
 
-  const filteredPurchases = purchases.filter((purchase) => {
+  // 검색어만 적용한 1차 목록 — 이름/월 선택지는 여기서 뽑는다
+  const searchedPurchases = purchases.filter((purchase) => {
     if (!searchQuery.trim()) return true;
     const target = (purchase.title || '').toLowerCase();
     return target.includes(searchQuery.trim().toLowerCase());
   });
+
+  const byRequester = sortMode === 'requester';
+
+  // 이름 선택지 (실제 기록이 있는 사람만)
+  const requesterOptions = useMemo(() => {
+    const names = new Set(searchedPurchases.map((p) => p.requester_name).filter(Boolean));
+    return Array.from(names).sort((a, b) => a.localeCompare(b, 'ko'));
+  }, [searchedPurchases]);
+
+  // 월 선택지 — 이름을 고른 뒤에만 의미가 있으므로 그 사람 기록에서 뽑는다
+  const monthOptions = useMemo(() => {
+    if (!selectedRequester) return [];
+    const months = new Set(
+      searchedPurchases
+        .filter((p) => p.requester_name === selectedRequester)
+        .map((p) => (p.purchase_date || '').slice(0, 7))
+        .filter(Boolean)
+    );
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
+  }, [searchedPurchases, selectedRequester]);
+
+  const filteredPurchases = searchedPurchases.filter((purchase) => {
+    if (!byRequester) return true;
+    if (selectedRequester && purchase.requester_name !== selectedRequester) return false;
+    if (selectedRequester && selectedMonth && (purchase.purchase_date || '').slice(0, 7) !== selectedMonth) {
+      return false;
+    }
+    return true;
+  });
+
+  // 고른 이름의 기록이 사라지거나(검색어 변경 등) 월이 범위를 벗어나면 선택을 되돌린다
+  useEffect(() => {
+    if (selectedRequester && !requesterOptions.includes(selectedRequester)) {
+      setSelectedRequester('');
+      setSelectedMonth('');
+    }
+  }, [requesterOptions, selectedRequester]);
+
+  useEffect(() => {
+    if (selectedMonth && !monthOptions.includes(selectedMonth)) {
+      setSelectedMonth('');
+    }
+  }, [monthOptions, selectedMonth]);
 
   const sortedPurchases = [...filteredPurchases].sort((a, b) => {
     const aTime = new Date(a.updated_at || a.created_at).getTime();
@@ -324,7 +370,10 @@ export default function BookSupportPage() {
           return bTime - aTime;
         });
 
-        rows.push({ type: 'header', id: `header-${name}`, title: name });
+        // 한 사람만 보고 있을 땐 상단 선택창에 이름이 떠 있으므로 머리글을 생략한다
+        if (!selectedRequester) {
+          rows.push({ type: 'header', id: `header-${name}`, title: name });
+        }
 
         const monthMap = new Map<string, BookPurchase[]>();
         items.forEach((purchase) => {
@@ -352,7 +401,7 @@ export default function BookSupportPage() {
       });
 
     return rows;
-  }, [filteredPurchases, sortMode]);
+  }, [filteredPurchases, sortMode, selectedRequester]);
 
   return (
     <div className="min-h-screen page-shell">
@@ -529,7 +578,11 @@ export default function BookSupportPage() {
                 <div className="relative">
                   <select
                     value={sortMode}
-                    onChange={(e) => setSortMode(e.target.value as 'updated' | 'requester')}
+                    onChange={(e) => {
+                      setSortMode(e.target.value as 'updated' | 'requester');
+                      setSelectedRequester('');
+                      setSelectedMonth('');
+                    }}
                     className="h-10 w-[160px] px-3 pr-9 border border-[--border] rounded-xl bg-white text-sm appearance-none"
                   >
                     <option value="updated">업데이트순</option>
@@ -547,6 +600,68 @@ export default function BookSupportPage() {
                 <span className="text-xs text-[--gray-500]">{filteredPurchases.length}건</span>
               </div>
             </div>
+            {byRequester && (
+              <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[--border] bg-[--gray-50] px-3 py-2.5">
+                <div className="relative">
+                  <select
+                    value={selectedRequester}
+                    onChange={(e) => {
+                      setSelectedRequester(e.target.value);
+                      setSelectedMonth('');
+                    }}
+                    className="h-9 w-[150px] px-3 pr-9 border border-[--border] rounded-lg bg-white text-sm appearance-none"
+                  >
+                    <option value="">구매자 전체</option>
+                    {requesterOptions.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                  <svg aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[--gray-400]" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M5.5 7.5L10 12l4.5-4.5" />
+                  </svg>
+                </div>
+
+                <div className="relative">
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    disabled={!selectedRequester}
+                    className="h-9 w-[150px] px-3 pr-9 border border-[--border] rounded-lg bg-white text-sm appearance-none disabled:bg-[--gray-100] disabled:text-[--gray-400] disabled:cursor-not-allowed"
+                  >
+                    <option value="">{selectedRequester ? '전체 기간' : '이름을 먼저 선택'}</option>
+                    {monthOptions.map((month) => (
+                      <option key={month} value={month}>
+                        {`${month.slice(0, 4)}년 ${Number(month.slice(5, 7))}월`}
+                      </option>
+                    ))}
+                  </select>
+                  <svg aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[--gray-400]" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M5.5 7.5L10 12l4.5-4.5" />
+                  </svg>
+                </div>
+
+                {(selectedRequester || selectedMonth) && (
+                  <>
+                    <span className="text-xs text-[--gray-600]">
+                      {selectedRequester}
+                      {selectedMonth && ` · ${Number(selectedMonth.slice(5, 7))}월`} ·{' '}
+                      {filteredPurchases.length}건 ·{' '}
+                      {filteredPurchases.reduce((sum, p) => sum + (p.price || 0), 0).toLocaleString()}원
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedRequester('');
+                        setSelectedMonth('');
+                      }}
+                      className="text-xs text-[--gray-500] hover:text-black underline"
+                    >
+                      선택 해제
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
             {listError && (
               <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
                 {listError}
@@ -555,7 +670,11 @@ export default function BookSupportPage() {
             {loading ? (
               <div className="text-sm text-[--gray-500]">불러오는 중...</div>
             ) : filteredPurchases.length === 0 ? (
-              <div className="text-sm text-[--gray-500]">등록된 도서 신청이 없습니다.</div>
+              <div className="text-sm text-[--gray-500]">
+                {byRequester && selectedRequester
+                  ? '선택한 조건에 해당하는 기록이 없습니다.'
+                  : '등록된 도서 신청이 없습니다.'}
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-[760px] w-full table-fixed text-sm">
