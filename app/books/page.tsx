@@ -56,6 +56,7 @@ export default function BookSupportPage() {
   const [loading, setLoading] = useState(true);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [formError, setFormError] = useState('');
+  const [lookupNotice, setLookupNotice] = useState('');
   const [listError, setListError] = useState('');
   const [monthlyTotal, setMonthlyTotal] = useState<number | null>(null);
   const [sortMode, setSortMode] = useState<'updated' | 'requester'>('updated');
@@ -146,6 +147,7 @@ export default function BookSupportPage() {
       return;
     }
     setFormError('');
+    setLookupNotice('');
     setLookupLoading(true);
     try {
       const response = await fetch('/api/books/lookup', {
@@ -165,6 +167,7 @@ export default function BookSupportPage() {
           price: data.price ? String(data.price) : '',
           isbn13: data.isbn13 || '',
         }));
+        setLookupNotice(data.notice || '');
       }
     } catch (error) {
       console.error(error);
@@ -233,12 +236,14 @@ export default function BookSupportPage() {
       note: '',
     });
     setMonthlyTotal(null);
+    setLookupNotice('');
     setEditingPurchaseId(null);
     fetchPurchases();
   };
 
   const handleEdit = (purchase: BookPurchase) => {
     setEditingPurchaseId(purchase.id);
+    setLookupNotice('');
     setForm({
       aladin_url: purchase.aladin_url || '',
       requester_name: purchase.requester_name,
@@ -266,6 +271,7 @@ export default function BookSupportPage() {
       note: '',
     });
     setFormError('');
+    setLookupNotice('');
     setMonthlyTotal(null);
   };
 
@@ -443,6 +449,11 @@ export default function BookSupportPage() {
                     {lookupLoading ? '가져오는 중' : '정보 가져오기'}
                   </button>
                 </div>
+                {lookupNotice && (
+                  <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                    {lookupNotice}
+                  </div>
+                )}
               </div>
 
               <div>
